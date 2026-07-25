@@ -201,7 +201,7 @@ jobs:
             --service-account="${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}" \
             --command="python" \
             --args="-m,app.worker" \
-            --task-timeout=540 \
+            --task-timeout=1800 \
             --max-retries=0 \
             --cpu=1 \
             --memory=512Mi \
