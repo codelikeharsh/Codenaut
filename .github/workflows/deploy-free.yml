@@ -291,6 +291,7 @@ jobs:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       VITE_API_BASE_URL: ${{ vars.PRODUCTION_API_ORIGIN }}/api/v1
+      API_PROXY_TARGET: ${{ vars.PRODUCTION_API_ORIGIN }}/api/v1
     steps:
       - name: Check out the requested immutable source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
