@@ -203,9 +203,9 @@ jobs:
             --args="-m,app.worker" \
             --task-timeout=1800 \
             --max-retries=0 \
-            --cpu=1 \
-            --memory=512Mi \
-            --set-env-vars="SERVICE_ROLE=worker,APP_ENV=production,LOG_JSON=true,DOCS_ENABLED=false" \
+            --cpu=2 \
+            --memory=4Gi \
+            --set-env-vars="SERVICE_ROLE=worker,APP_ENV=production,LOG_JSON=true,DOCS_ENABLED=false,PARSER_TIMEOUT_SECONDS=600,EMBEDDING_READ_TIMEOUT_SECONDS=300" \
             --set-secrets="DATABASE_URL=database-url:latest,REDIS_URL=redis-url:latest,QDRANT_URL=qdrant-url:latest,QDRANT_API_KEY=qdrant-api-key:latest,GITHUB_APP_ID=github-app-id:latest,GITHUB_APP_PRIVATE_KEY=github-app-private-key:latest,EMBEDDING_SERVICE_URL=embedding-service-url:latest,EMBEDDING_SERVICE_TOKEN=embedding-service-token:latest,ACCESS_TOKEN_SECRET=access-token-secret:latest,TOKEN_HASH_SECRET=token-hash-secret:latest" \
             --quiet
 
