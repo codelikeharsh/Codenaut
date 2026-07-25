@@ -113,7 +113,7 @@ gcloud iam service-accounts create codenaut-deployer \
 
 export SA_EMAIL="codenaut-deployer@${PROJECT_ID}.iam.gserviceaccount.com"
 
-for role in roles/run.admin roles/artifactregistry.writer roles/iam.serviceAccountUser roles/secretmanager.secretAccessor; do
+for role in roles/run.admin roles/artifactregistry.writer roles/iam.serviceAccountUser roles/secretmanager.secretAccessor roles/cloudscheduler.admin; do
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="$role"

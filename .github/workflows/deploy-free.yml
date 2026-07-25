@@ -155,6 +155,7 @@ jobs:
             --image "${{ needs.build-images.outputs.embedding-image }}" \
             --service-account="${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}" \
             --allow-unauthenticated \
+            --port=8100 \
             --min-instances=0 \
             --max-instances=1 \
             --concurrency=4 \
@@ -264,6 +265,7 @@ jobs:
             --image "${{ needs.build-images.outputs.backend-image }}" \
             --service-account="${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}" \
             --allow-unauthenticated \
+            --port=8000 \
             --min-instances=0 \
             --max-instances=2 \
             --cpu=1 \
