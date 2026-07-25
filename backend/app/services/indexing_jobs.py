@@ -565,6 +565,12 @@ class IndexingJobStore:
                             CallEdge.call_end_line,
                             CallEdge.caller_symbol_id,
                             CallEdge.call_expression,
+                            # Must mirror the tiebreaker in PythonCallGraphBuilder's
+                            # in-memory sort, or ties there and here can land in
+                            # different relative order and the recomputed
+                            # fingerprint will disagree with the one already
+                            # stored, failing validation nondeterministically.
+                            CallEdge.call_site_fingerprint,
                         )
                     )
                 ).all()

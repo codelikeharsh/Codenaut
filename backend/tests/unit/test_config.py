@@ -1,5 +1,6 @@
 """Configuration validation and redaction behavior."""
 
+import jwt
 import pytest
 from pydantic import ValidationError
 
@@ -246,6 +247,7 @@ def test_production_rejects_provider_exfiltration_and_placeholder_configuration(
     [
         "https://api.openai.com/v1",
         "https://generativelanguage.googleapis.com/v1beta/openai",
+        "https://api.groq.com/openai/v1",
     ],
 )
 def test_production_accepts_only_reviewed_llm_provider_endpoints(llm_api_url: str) -> None:
@@ -402,3 +404,32 @@ def test_migration_settings_fall_back_to_application_database_url(
     monkeypatch.setenv("DATABASE_URL", database_url)
 
     assert load_migration_database_url() == database_url
+
+
+def test_escaped_newline_private_key_is_normalized_for_signing() -> None:
+    """A dotenv-style single-line PEM must become a signable multi-line key.
+
+    Regression: the escaped form passed the PEM shape check but failed at
+    jwt.encode with InvalidKeyError, so every dotenv-configured deployment
+    broke on the first GitHub App API call rather than at startup.
+    """
+    real_pem = production_test_private_key()
+    escaped = real_pem.replace("\n", "\\n")
+    assert "\n" not in escaped
+
+    settings = make_settings(github_app_private_key=escaped)
+    normalized = settings.github_app_private_key.get_secret_value()
+
+    assert "\\n" not in normalized
+    assert normalized.strip() == real_pem.strip()
+    # The decisive check: the stored value can actually sign a JWT.
+    token = jwt.encode({"iss": "1"}, normalized, algorithm="RS256")
+    assert token
+
+
+def test_already_multiline_private_key_is_left_intact() -> None:
+    real_pem = production_test_private_key()
+
+    settings = make_settings(github_app_private_key=real_pem)
+
+    assert settings.github_app_private_key.get_secret_value() == real_pem.strip()

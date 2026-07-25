@@ -156,7 +156,7 @@ export function RepositoryListPage(): React.JSX.Element {
           <h1>Choose a repository to understand</h1>
           <p>
             Import a public GitHub repository by URL. Private repositories remain protected by the
-            RepoLume GitHub App.
+            Codenaut GitHub App.
           </p>
         </div>
       </header>
@@ -169,7 +169,7 @@ export function RepositoryListPage(): React.JSX.Element {
             <p className="eyebrow">Public repository</p>
             <h2>Import public repository</h2>
             <p>
-              No GitHub App installation is required. RepoLume validates the URL and visibility.
+              No GitHub App installation is required. Codenaut validates the URL and visibility.
             </p>
           </div>
           <form
@@ -251,7 +251,7 @@ export function RepositoryListPage(): React.JSX.Element {
       ) : null}
       {!loading && installations.length === 0 ? (
         <EmptyState title="Connect private repositories">
-          Install or configure the RepoLume GitHub App to access private or organization
+          Install or configure the Codenaut GitHub App to access private or organization
           repositories. Public URL imports remain available above.
         </EmptyState>
       ) : null}
@@ -345,7 +345,7 @@ export function RepositoryListPage(): React.JSX.Element {
             <EmptyState title={query ? "No matching repositories" : "No authorized repositories"}>
               {query
                 ? "Try a different repository name."
-                : "The selected installation has no repositories RepoLume can access."}
+                : "The selected installation has no repositories Codenaut can access."}
             </EmptyState>
           ) : null}
         </Panel>

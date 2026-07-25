@@ -1,4 +1,4 @@
-# RepoLume Security
+# Codenaut Security
 
 **Status:** Milestone 11 completed the repository security/privacy review and its remediations passed hosted CI. Milestone 12 deployment-source hardening passed hosted CI run `29945450738`; live GitHub App/hosted-LLM behavior, deployment, final cross-store deletion, and hosted production controls remain unverified; see `SECURITY_AUDIT_M11.md` and `DEPLOYMENT_M12.md`.
 
@@ -124,7 +124,7 @@ Legend: **Verified M7** means the implemented subset passed local automated/manu
 - `search_code` preserves the Milestone 6 active-version/model/preprocessing Qdrant scope. `get_history` ignores model attempts to choose scope, reauthorizes through the server-held user/repository context, mints a token restricted to the GitHub repository ID, and calls only fixed GitHub commit and associated-PR paths.
 - GitHub commit and PR URLs are rebound to the authorized owner/repository; commit SHAs, repository paths, parent identities, and untrusted response shapes are validated. Rate-limit/transient retries are bounded, and provider bodies are not logged.
 - Code, commit, PR, and caller evidence IDs are server-generated for the current request. The model cannot create metadata. Fabricated relationship/history citations, cross-trace IDs, duplicates, and changed active scope fail closed; final citations follow deterministic server evidence order.
-- Both production images use Python 3.13.14 on supported Debian 13 and non-root users. Fixed High/Critical archive scanning is in CI. The exact, version-scoped `CVE-2026-15308` rule documents that the affected standard-library HTML parser is outside RepoLume's execution path and must be removed on the first patched Python 3.13 release.
+- Both production images use Python 3.13.14 on supported Debian 13 and non-root users. Fixed High/Critical archive scanning is in CI. The exact, version-scoped `CVE-2026-15308` rule documents that the affected standard-library HTML parser is outside Codenaut's execution path and must be removed on the first patched Python 3.13 release.
 
 ## Connected-repository sandbox rules
 
@@ -175,7 +175,7 @@ No Critical finding was confirmed. Both High findings were remediated. Medium de
 
 The source-side deployment deferrals are closed: both production images pin the reviewed Python base by multi-platform registry digest; Vercel config binds `connect-src` to the validated exact API origin and adds HSTS/frame/nosniff/referrer/permissions headers; Railway manifests keep worker/embeddings private; and the manual release workflow requires the current full green-CI `main` SHA.
 
-Least privilege is narrower than Milestone 11. `SERVICE_ROLE=worker` omits GitHub OAuth/webhook, RepoLume session/hash, Google, and hosted-LLM secrets. Alembic loads only the direct migration database URL. Production plaintext service URLs are not generally allowed: the sole exception is an authenticated explicit-port exact Railway private hostname on its encrypted mesh. Suffix-lookalike tests fail closed. Public Qdrant/Neon/OAuth/LLM traffic retains TLS and exact-destination validation.
+Least privilege is narrower than Milestone 11. `SERVICE_ROLE=worker` omits GitHub OAuth/webhook, Codenaut session/hash, Google, and hosted-LLM secrets. Alembic loads only the direct migration database URL. Production plaintext service URLs are not generally allowed: the sole exception is an authenticated explicit-port exact Railway private hostname on its encrypted mesh. Suffix-lookalike tests fail closed. Public Qdrant/Neon/OAuth/LLM traffic retains TLS and exact-destination validation.
 
 No production secret, provider resource, public domain, live edge header, private-network exposure, deployed-image identity, backup, alert, live OAuth, webhook, GitHub repository, or hosted-model flow has been verified. Source-image CI scans passed in run `29945450738`; that is not evidence about a deployed artifact. The M11 deletion/retention limitation remains. Production launch is blocked until `DEPLOYMENT_M12.md` acceptance and recovery evidence exists.
 
@@ -188,3 +188,15 @@ No production secret, provider resource, public domain, live edge header, privat
 - Every caller lookup repeats repository/installation membership authorization. Cross-user, cross-installation, revoked, suspended, deleted, changed-version, unavailable-graph, and query-failure paths fail closed.
 - Tool arguments cannot carry repository IDs, installation IDs, index versions, commits, SQL, URLs, filters, tokens, or result limits. Results are deterministically ordered and server-capped.
 - Caller evidence states its static limitation. Dynamic dispatch, reflection, monkey patching, generated code, decorators, callbacks, and polymorphism may be missing or unresolved; ambiguous methods never receive high confidence.
+
+## Post-Milestone-12 security-relevant changes (2026-07-25)
+
+These accompany the product work recorded in `BUILD_STATUS.md`. They add abuse and cost
+controls and a user-facing delete path; they do not relax any existing control.
+
+- **Per-user question quotas.** Fixed-window per-minute and per-day limits are enforced in Redis before any embedding, retrieval, or model call, so a throttled request costs nothing downstream. Quota keys contain only the user id — never question text. A Redis outage fails open and logs `rate_limit_unavailable`, a deliberate availability-over-enforcement trade-off recorded in D-072.
+- **Content-free usage accounting.** `usage_records` now receives one row per answered question with operation, latency, token counts, and embedding units. It stores no prompts, answers, evidence, or repository content. Token counts are read only from the provider response envelope, never from model-authored JSON, so a compromised or adversarial model cannot inflate or falsify its own accounting.
+- **Chat history is a new store of user content.** Persisted questions and answers are scoped to one session per user per repository, enforced by a uniqueness constraint and by authorization re-checks on every read and delete. `DELETE /api/v1/repositories/{id}/messages` is scoped by both repository and authenticated creator, so one tenant cannot clear another's transcript; a cross-tenant delete attempt returns the same safe 404 as any other unauthorized repository access. This covers user-initiated deletion only — durable account deletion and retention remain deferred and are unchanged.
+- **Profile editing is narrowly scoped.** `PATCH /api/v1/auth/me` accepts only `custom_display_name` and `avatar_color`. Names are length-bounded and reject control characters; colors are validated against a fixed server-side palette. Provider-synced identity fields cannot be written through this endpoint.
+- **Syntax highlighting adds no injection surface.** Untrusted repository source is tokenized into plain values rendered as React elements. No HTML string is constructed and `dangerouslySetInnerHTML` is not used, so highlighting cannot introduce script execution (D-074).
+- **Render failures fail safe.** A route-level error boundary catches render exceptions and shows a recovery affordance. The caught error is logged to the console but never rendered, since component internals and untrusted repository text can appear in props.

@@ -1,12 +1,15 @@
-import { ChevronDown, FolderGit2, LayoutDashboard, LogOut, Menu, Settings, X } from "lucide-react";
+import { FolderGit2, LayoutDashboard, LogOut, Menu, Search, Settings, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { Repository } from "../api/contracts";
 import { useAuth } from "../auth/useAuth";
+import { Avatar } from "../components/Avatar";
+import { CommandPalette } from "../components/CommandPalette";
 import { StatusBadge } from "../components/StatusBadge";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { Button } from "../components/ui";
-import { trustedAvatarUrl } from "../utils/format";
+import { effectiveName } from "../utils/format";
 
 function SidebarLink({
   to,
@@ -29,11 +32,23 @@ function SidebarLink({
 }
 
 export function AppShell(): React.JSX.Element {
-  const { accessToken, user, signOut } = useAuth();
+  const { user, accessToken, signOut } = useAuth();
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [open, setOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const navigate = useNavigate();
-  const avatarUrl = trustedAvatarUrl(user?.avatar_url);
+  const name = effectiveName(user);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((current) => !current);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -66,18 +81,26 @@ export function AppShell(): React.JSX.Element {
         <div className="sidebar__top">
           <Link className="brand" to="/repositories" onClick={() => setOpen(false)}>
             <span className="brand__mark" aria-hidden="true">
-              R
+              C
             </span>
-            <span>RepoLume</span>
+            <span>Codenaut</span>
           </Link>
-          <button
-            aria-label="Close navigation"
-            className="mobile-close-button"
-            onClick={() => setOpen(false)}
-          >
-            <X size={20} />
-          </button>
+          <div className="button-row">
+            <ThemeToggle />
+            <button
+              aria-label="Close navigation"
+              className="mobile-close-button"
+              onClick={() => setOpen(false)}
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
+        <button className="palette-trigger" onClick={() => setPaletteOpen(true)} type="button">
+          <Search aria-hidden="true" size={15} />
+          <span>Search…</span>
+          <kbd>⌘K</kbd>
+        </button>
         <nav className="sidebar__nav">
           <SidebarLink icon={<LayoutDashboard size={17} />} to="/repositories">
             Repositories
@@ -108,17 +131,10 @@ export function AppShell(): React.JSX.Element {
           ))}
         </div>
         <div className="sidebar__user">
-          <div className="user-summary">
-            {avatarUrl ? (
-              <img alt="" referrerPolicy="no-referrer" src={avatarUrl} />
-            ) : (
-              <span className="avatar-fallback">
-                {(user?.github_login ?? user?.display_name ?? "R").slice(0, 1).toUpperCase()}
-              </span>
-            )}
-            <span>{user?.github_login ?? user?.display_name ?? "RepoLume user"}</span>
-            <ChevronDown aria-hidden="true" size={14} />
-          </div>
+          <Link className="user-summary" to="/settings" onClick={() => setOpen(false)}>
+            <Avatar color={user?.avatar_color} name={name} size="sm" />
+            <span>{name}</span>
+          </Link>
           <Button className="sidebar__logout" variant="quiet" onClick={() => void handleSignOut()}>
             <LogOut aria-hidden="true" size={16} />
             Sign out
@@ -135,6 +151,11 @@ export function AppShell(): React.JSX.Element {
       <main id="main-content" className="app-main">
         <Outlet />
       </main>
+      <CommandPalette
+        onClose={() => setPaletteOpen(false)}
+        open={paletteOpen}
+        repositories={repositories}
+      />
     </div>
   );
 }

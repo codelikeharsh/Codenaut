@@ -5,16 +5,16 @@ describe("trusted provider URLs", () => {
   it("allows only canonical GitHub commit and pull-request evidence links", () => {
     const sha = "a".repeat(40);
 
-    expect(trustedGitHubUrl(`https://github.com/repolume/api/commit/${sha}`)).toBe(
-      `https://github.com/repolume/api/commit/${sha}`,
+    expect(trustedGitHubUrl(`https://github.com/codenaut/api/commit/${sha}`)).toBe(
+      `https://github.com/codenaut/api/commit/${sha}`,
     );
-    expect(trustedGitHubUrl("https://github.com/repolume/api/pull/42")).toBe(
-      "https://github.com/repolume/api/pull/42",
+    expect(trustedGitHubUrl("https://github.com/codenaut/api/pull/42")).toBe(
+      "https://github.com/codenaut/api/pull/42",
     );
-    expect(trustedGitHubUrl("https://github.com.evil.example/repolume/api/pull/42")).toBeNull();
-    expect(trustedGitHubUrl("https://github.com/repolume/api/issues/42")).toBeNull();
-    expect(trustedGitHubUrl("https://github.com/repolume/api/pull/42?redirect=evil")).toBeNull();
-    expect(trustedGitHubUrl("https://user:pass@github.com/repolume/api/pull/42")).toBeNull();
+    expect(trustedGitHubUrl("https://github.com.evil.example/codenaut/api/pull/42")).toBeNull();
+    expect(trustedGitHubUrl("https://github.com/codenaut/api/issues/42")).toBeNull();
+    expect(trustedGitHubUrl("https://github.com/codenaut/api/pull/42?redirect=evil")).toBeNull();
+    expect(trustedGitHubUrl("https://user:pass@github.com/codenaut/api/pull/42")).toBeNull();
   });
 
   it("allows only HTTPS avatar URLs from the configured identity providers", () => {

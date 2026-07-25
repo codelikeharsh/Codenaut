@@ -20,3 +20,5 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     avatar_url: Mapped[str | None] = mapped_column(Text)
     email: Mapped[str | None] = mapped_column(String(320))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    custom_display_name: Mapped[str | None] = mapped_column(String(100))
+    avatar_color: Mapped[str | None] = mapped_column(String(7))

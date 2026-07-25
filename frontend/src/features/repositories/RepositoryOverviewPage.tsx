@@ -37,7 +37,11 @@ export function RepositoryOverviewPage(): React.JSX.Element {
     void api
       .getRepository(accessToken, repositoryId, controller.signal)
       .then(setRepository)
-      .catch(() => setError("This repository is no longer available."))
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setError("This repository is no longer available.");
+        }
+      })
       .finally(() => setLoading(false));
     return () => controller.abort();
   }, [accessToken, repositoryId]);

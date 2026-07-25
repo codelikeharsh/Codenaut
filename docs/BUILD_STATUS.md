@@ -1,8 +1,8 @@
-# RepoLume Build Status
+# Codenaut Build Status
 
-**Last updated:** 2026-07-22
+**Last updated:** 2026-07-25
 
-**Authorized milestone:** Milestone 12 — production deployment
+**Authorized milestone:** Milestone 12 — production deployment. Additional product work (rebrand, interface redesign, editable profiles, chat persistence, cost controls) was completed on 2026-07-25 at user request; see "Post-Milestone-12 product work".
 
 **Overall status:** Milestone 11 is complete at `246455ca22f2a995c4047a05a84ac91c74db7d5f`. Milestone 12 repository-side deployment hardening is implemented at `9e55be049aabbe257be796c88591689697a8edb8`; hosted CI run `29945450738` passed all four required jobs. External infrastructure and live acceptance are blocked because this workspace has no Vercel/Railway linkage, no Neon/Qdrant/managed-Redis credentials, no production domains, and no hosted-model credential. Milestone 12 is not complete.
 
@@ -189,3 +189,53 @@ Milestone 9 is a dependency-backed local freshness foundation, not a production 
 ## Next milestone gate
 
 Milestone 11 only is authorized. Milestone 12 has not started. Hosted CI for the current audit work must be green before Milestone 11 can be declared fully complete.
+
+## Post-Milestone-12 product work (2026-07-25)
+
+This work was requested directly by the user outside the milestone sequence. It is
+recorded here so the documentation matches the code; it does not change Milestone 12's
+incomplete status or the outstanding external acceptance below.
+
+### Defects found and fixed in the pre-existing tree
+
+1. `backend/tests/unit/test_python_parser.py` segfaulted the whole suite. Commits `2d1fb68`/`c550c57` pinned `tree-sitter==0.25.2` to fix a tree-lifetime crash, but only `requirements.lock` was regenerated — `requirements-dev.lock` still resolved `0.26.0`, so the fix was never active in development or CI. The development lock was resynchronized to the reviewed `0.25.2` hash block.
+2. Strict mypy could not run at all. `numpy` 2.5.1 (transitive through `qdrant-client`) ships PEP 695 stub syntax that mypy rejects under `python_version = "3.11"`. The mypy target was raised to `3.12`, still within the declared `>=3.11` support range and below the 3.13 production baseline.
+3. Three pages rendered false "unavailable" errors on every load. Repository overview, question workspace, and settings did not distinguish an aborted request from a real failure, so React 19 StrictMode's intentional double-invoke surfaced as an error banner. They now use the `controller.signal.aborted` guard that the repository list already had.
+4. `npm audit --audit-level=high` failed CI on 13 advisories. Twelve were resolved outright by pinning patched `brace-expansion`/`minimatch` through `overrides`. The thirteenth is unreachable in this application and is handled by a reviewed allowlist; see D-066.
+
+### Product changes
+
+- Renamed the browser product to Codenaut (D-067). Backend package, database, and queue identifiers deliberately still read `repolume`.
+- Replaced the borrowed GitHub color tokens with an owned design system and added a full light theme with pre-paint theme resolution (D-068).
+- Rebuilt the question workspace as a chat transcript with end-of-message source reference chips instead of a separate evidence block, retaining the existing sanitized Markdown and trusted-link handling.
+- Added editable display name and avatar color, separated from provider-synced identity (D-069). Alembic revision `be76712242d1`.
+- Added persistent chat history per user per repository (D-070) and a user-initiated delete path (D-071). Alembic revision `f47667fd42f6`.
+- Added per-user question rate limiting (D-072) and content-free usage/token accounting (D-073), activating the previously unused `usage_records` table.
+- Added a route-level error boundary, chat auto-scroll, copy-answer, retry-after-failure, a dependency-free Python syntax highlighter (D-074), and a Cmd/Ctrl+K command palette.
+
+### Database and API changes
+
+Two Alembic revisions were added after `da6b47f8cd61`: `be76712242d1` (editable profile columns) and
+`f47667fd42f6` (chat message columns plus a `(repository_id, created_by_user_id)` uniqueness
+constraint on `chat_sessions`). Both were verified to apply and roll back cleanly, and `alembic check`
+reports no drift. New endpoints: `PATCH /api/v1/auth/me`, `GET /api/v1/repositories/{id}/messages`,
+`DELETE /api/v1/repositories/{id}/messages`.
+
+### Verification on 2026-07-25
+
+| Gate | Actual result |
+| --- | --- |
+| Backend format/lint/mypy | Passed; strict mypy clean across 144 source/test files |
+| Backend suite | 450+ passed against disposable PostgreSQL 18, Redis 8.8, Qdrant 1.18.2, and the real pinned private embedding service; branch-aware coverage 90.4–90.8% against the enabled 90% gate |
+| Migrations | Both new revisions applied, `alembic check` clean, and each verified to downgrade and re-upgrade |
+| Frontend | TypeScript project build, ESLint, Prettier, 29 Vitest tests, 8 Chromium Playwright tests, and the production Vite build all passed |
+| Browser verification | Sign-in, repository list, overview, chat, settings, both themes, profile edit round-trip, chat persistence across reload, chat deletion, command palette, and syntax highlighting were each exercised in a real browser against a local mock API |
+| Live providers | Unchanged and still not claimed. No real GitHub App, hosted model, or deployed environment was exercised |
+
+### Limitations introduced by this work
+
+- Restored chat exchanges report `duration_ms` as 0; latency describes a past request and is not persisted.
+- Token columns in `usage_records` stay NULL unless a provider reports usage, and `estimated_cost` is always NULL until per-model pricing is configured.
+- Rate limiting is best-effort during a Redis outage by design (fail-open, logged).
+- Syntax highlighting covers Python only, matching the indexer's language support.
+- The browser verification above used a local mock API, not a deployed backend.

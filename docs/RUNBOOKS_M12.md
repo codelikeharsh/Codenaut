@@ -31,8 +31,8 @@ Use provider-supported overlap where possible: create the new credential, store 
 
 | Secret | Owner | Invalidation and verification |
 | --- | --- | --- |
-| GitHub OAuth client secret | API | Verify a new login; existing RepoLume sessions remain until normal expiry/revocation |
-| Google client secret | API | Verify a new Google exchange; existing RepoLume sessions remain |
+| GitHub OAuth client secret | API | Verify a new login; existing Codenaut sessions remain until normal expiry/revocation |
+| Google client secret | API | Verify a new Google exchange; existing Codenaut sessions remain |
 | GitHub App private key | API and worker | Verify server-side installation-token minting in both; use GitHub overlapping keys; issued tokens expire naturally |
 | GitHub webhook secret | API and GitHub App | Coordinate both ends; verify one signed delivery and invalid-old-signature rejection before completing rotation |
 | `ACCESS_TOKEN_SECRET` | API | Existing access tokens become invalid, bounded by the 15-minute default lifetime |

@@ -1,12 +1,14 @@
 import type {
   AccessTokenResponse,
   AvailableRepository,
+  ChatExchange,
   IndexingStatus,
   Installation,
   QuestionResponse,
   PublicRepositoryImportResponse,
   Repository,
   RepositoryJobResponse,
+  UpdateProfileRequest,
   User,
 } from "./contracts";
 
@@ -107,6 +109,13 @@ export const api = {
   getCurrentUser(accessToken: string, signal?: AbortSignal): Promise<User> {
     return request<User>("/auth/me", { accessToken, signal });
   },
+  updateProfile(accessToken: string, body: UpdateProfileRequest): Promise<User> {
+    return request<User>("/auth/me", {
+      method: "PATCH",
+      accessToken,
+      body,
+    });
+  },
   listInstallations(accessToken: string, signal?: AbortSignal): Promise<Installation[]> {
     return request<Installation[]>("/installations", { accessToken, signal });
   },
@@ -200,5 +209,21 @@ export const api = {
         body: { question },
       },
     );
+  },
+  listMessages(
+    accessToken: string,
+    repositoryId: string,
+    signal?: AbortSignal,
+  ): Promise<ChatExchange[]> {
+    return request<ChatExchange[]>(`/repositories/${encodeURIComponent(repositoryId)}/messages`, {
+      accessToken,
+      signal,
+    });
+  },
+  clearMessages(accessToken: string, repositoryId: string): Promise<void> {
+    return request<void>(`/repositories/${encodeURIComponent(repositoryId)}/messages`, {
+      method: "DELETE",
+      accessToken,
+    });
   },
 };

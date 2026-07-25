@@ -179,3 +179,65 @@ def test_per_file_and_repository_call_limits_fail_safely() -> None:
             parsed_files=(regular,),
             symbols=records((regular,)),
         )
+
+
+def test_repeated_calls_on_one_line_produce_unique_edge_identities() -> None:
+    """Distinct call sites must never share a call-edge primary key.
+
+    Regression: the site fingerprint omitted the column, so `helper(1) + helper(2)`
+    produced two edges with the same deterministic id. Persisting them raised
+    `duplicate key value violates unique constraint "pk_call_edges"` and failed
+    indexing outright on ordinary real-world Python.
+    """
+    module = parse(
+        "app/m.py",
+        "def helper(value):\n    return value\n\ndef caller():\n    return helper(1) + helper(2)\n",
+    )
+
+    built = graph((module,))
+
+    same_line = [e for e in built.edges if e.call_line == 5]
+    assert len(same_line) == 2
+    assert len({e.id for e in same_line}) == 2
+    assert len({e.call_site_fingerprint for e in same_line}) == 2
+    # Every edge in the graph must be uniquely identified.
+    assert len({e.id for e in built.edges}) == len(built.edges)
+
+
+def test_edge_order_is_fully_deterministic_when_call_sites_tie_on_line() -> None:
+    """Edge ordering must not depend on insertion order once persisted and re-sorted.
+
+    Regression: two calls to the same target on one line tie on every column the
+    ordering previously used (file, line span, caller, expression). Python's stable
+    sort kept them in source order, but re-fetching with the same ORDER BY in SQL
+    has no such guarantee for tied rows, so the graph's stored fingerprint could
+    silently disagree with one recomputed from a re-fetch that happened to land in
+    a different relative order. Persisted edges must therefore sort into the exact
+    same order no matter what order they are handed to the sort in, which only
+    holds if the sort key includes something unique per edge.
+    """
+    module = parse(
+        "app/m.py",
+        "def helper(value):\n    return value\n\ndef caller():\n    return helper(1) + helper(2)\n",
+    )
+
+    built_forward = graph((module,))
+    # Simulate a re-fetch landing in a different physical order than insertion
+    # order, as an unordered SQL re-fetch of tied rows legitimately could.
+    reshuffled = PythonCallGraphBuilder(max_total_call_sites=1000).build(
+        repository_id=REPOSITORY_ID,
+        index_version=3,
+        commit_sha=COMMIT,
+        parsed_files=(module,),
+        symbols=tuple(reversed(records((module,)))),
+    )
+
+    same_line = [e for e in built_forward.edges if e.call_line == 5]
+    assert len(same_line) == 2
+    # The sort key must be unique per edge, or a tied re-fetch could reorder them.
+    assert same_line[0].call_site_fingerprint != same_line[1].call_site_fingerprint
+
+    forward_ids = [e.id for e in built_forward.edges]
+    reshuffled_ids = [e.id for e in reshuffled.edges]
+    assert forward_ids == reshuffled_ids
+    assert built_forward.fingerprint == reshuffled.fingerprint

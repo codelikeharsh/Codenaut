@@ -439,6 +439,57 @@ def test_github_login_me_installations_and_repository_listing(
     assert access_token not in logs
 
 
+def test_patch_me_updates_and_clears_custom_profile_fields(
+    auth_client: TestClient,
+    github: FakeGitHubClient,
+) -> None:
+    unauthorized = auth_client.patch("/api/v1/auth/me", json={"custom_display_name": "Nova"})
+    assert unauthorized.status_code == 401
+
+    access_token, _, _ = _login(auth_client)
+    headers = _authorization(access_token)
+
+    updated = auth_client.patch(
+        "/api/v1/auth/me",
+        headers=headers,
+        json={"custom_display_name": "  Nova Explorer  ", "avatar_color": "#6C5DD3"},
+    )
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["custom_display_name"] == "Nova Explorer"
+    assert body["avatar_color"] == "#6C5DD3"
+    assert body["github_login"] == "octocat"
+    assert body["display_name"] != "Nova Explorer"
+
+    persisted = auth_client.get("/api/v1/auth/me", headers=headers)
+    assert persisted.json()["custom_display_name"] == "Nova Explorer"
+    assert persisted.json()["avatar_color"] == "#6C5DD3"
+
+    invalid_color = auth_client.patch(
+        "/api/v1/auth/me", headers=headers, json={"avatar_color": "#ffffff"}
+    )
+    assert invalid_color.status_code == 422
+
+    blank_name = auth_client.patch(
+        "/api/v1/auth/me", headers=headers, json={"custom_display_name": "   "}
+    )
+    assert blank_name.status_code == 422
+
+    too_long_name = auth_client.patch(
+        "/api/v1/auth/me", headers=headers, json={"custom_display_name": "x" * 101}
+    )
+    assert too_long_name.status_code == 422
+
+    cleared = auth_client.patch(
+        "/api/v1/auth/me",
+        headers=headers,
+        json={"custom_display_name": None, "avatar_color": None},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["custom_display_name"] is None
+    assert cleared.json()["avatar_color"] is None
+
+
 def test_oauth_state_replay_mismatch_and_expiry_are_rejected(
     auth_client: TestClient,
     github: FakeGitHubClient,

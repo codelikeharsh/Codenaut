@@ -1,15 +1,105 @@
-import { Github, ShieldCheck } from "lucide-react";
+import { Check, Github, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../../api/client";
+import { ApiError, api } from "../../api/client";
 import type { Installation, Repository } from "../../api/contracts";
 import { useAuth } from "../../auth/useAuth";
+import { Avatar } from "../../components/Avatar";
 import { StatusBadge } from "../../components/StatusBadge";
-import { EmptyState, InlineAlert, Panel } from "../../components/ui";
-import { shortSha } from "../../utils/format";
+import { Button, EmptyState, InlineAlert, Input, Panel } from "../../components/ui";
+import { AVATAR_COLORS } from "../../utils/avatarColors";
+import { effectiveName, shortSha } from "../../utils/format";
+
+function AccountCard(): React.JSX.Element {
+  const { user, updateUser, accessToken } = useAuth();
+  const [nameInput, setNameInput] = useState(user?.custom_display_name ?? "");
+  const [colorInput, setColorInput] = useState<string | null>(user?.avatar_color ?? null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const previewName = nameInput.trim() || effectiveName(user);
+  const dirty =
+    nameInput.trim() !== (user?.custom_display_name ?? "") ||
+    colorInput !== (user?.avatar_color ?? null);
+
+  async function save(): Promise<void> {
+    if (!accessToken || !dirty || saving) return;
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const trimmed = nameInput.trim();
+      const updated = await api.updateProfile(accessToken, {
+        custom_display_name: trimmed.length > 0 ? trimmed : null,
+        avatar_color: colorInput,
+      });
+      updateUser(updated);
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2400);
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : "The profile could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Panel>
+      <h2>Account</h2>
+      <div className="account-card">
+        <Avatar color={colorInput} name={previewName} size="lg" />
+        <div className="account-card__fields">
+          <div className="account-card__field">
+            <label htmlFor="display-name-input">Display name</label>
+            <Input
+              id="display-name-input"
+              maxLength={100}
+              onChange={(event) => setNameInput(event.target.value)}
+              placeholder={user?.display_name ?? user?.github_login ?? "Your name"}
+              value={nameInput}
+            />
+          </div>
+          <div className="account-card__field">
+            <label id="avatar-color-label">Avatar color</label>
+            <div
+              aria-labelledby="avatar-color-label"
+              className="color-swatch-picker"
+              role="radiogroup"
+            >
+              {AVATAR_COLORS.map((color) => (
+                <button
+                  aria-checked={colorInput === color}
+                  aria-label={`Avatar color ${color}`}
+                  className={`color-swatch${colorInput === color ? " color-swatch--selected" : ""}`}
+                  key={color}
+                  onClick={() => setColorInput(color)}
+                  role="radio"
+                  style={{ background: color }}
+                  type="button"
+                >
+                  {colorInput === color ? (
+                    <Check aria-hidden="true" color="#fff" size={13} />
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
+      <div className="button-row">
+        <Button disabled={!dirty} loading={saving} onClick={() => void save()} variant="primary">
+          {saved ? "Saved" : "Save changes"}
+        </Button>
+        <span className="mono muted">{user?.github_login ?? "Not available"}</span>
+      </div>
+    </Panel>
+  );
+}
 
 export function SettingsPage(): React.JSX.Element {
-  const { accessToken, user } = useAuth();
+  const { accessToken } = useAuth();
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [installations, setInstallations] = useState<Installation[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +115,11 @@ export function SettingsPage(): React.JSX.Element {
         setRepositories(nextRepositories);
         setInstallations(nextInstallations);
       })
-      .catch(() => setError("Settings data is temporarily unavailable."));
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setError("Settings data is temporarily unavailable.");
+        }
+      });
     return () => controller.abort();
   }, [accessToken]);
 
@@ -35,24 +129,12 @@ export function SettingsPage(): React.JSX.Element {
         <div>
           <p className="eyebrow">Settings</p>
           <h1>Account and repository access</h1>
-          <p>RepoLume uses the server-authorized GitHub App connection for repository access.</p>
+          <p>Codenaut uses the server-authorized GitHub App connection for repository access.</p>
         </div>
       </header>
       {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
       <div className="settings-grid">
-        <Panel>
-          <h2>Account</h2>
-          <dl className="metadata-grid">
-            <div>
-              <dt>GitHub account</dt>
-              <dd>{user?.github_login ?? "Not available"}</dd>
-            </div>
-            <div>
-              <dt>Display name</dt>
-              <dd>{user?.display_name ?? "Not provided"}</dd>
-            </div>
-          </dl>
-        </Panel>
+        <AccountCard />
         <Panel>
           <h2>GitHub connection</h2>
           <p className="settings-copy">
@@ -61,7 +143,7 @@ export function SettingsPage(): React.JSX.Element {
           </p>
           {installations.length === 0 ? (
             <EmptyState title="No active installation">
-              Install the RepoLume GitHub App, then return to connect repositories.
+              Install the Codenaut GitHub App, then return to connect repositories.
             </EmptyState>
           ) : (
             <ul className="settings-list">

@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Citation, CodeCitation } from "../../api/contracts";
 import { Button, EmptyState } from "../../components/ui";
 import { formatDate, shortSha, titleCase, trustedGitHubUrl } from "../../utils/format";
+import { tokenizePython } from "../../utils/highlight";
 
 export function EvidenceInspector({
   citation,
@@ -93,7 +94,15 @@ function CodeEvidence({ citation }: { citation: CodeCitation }): React.JSX.Eleme
           {lines.map((line, index) => (
             <code key={`${index}-${line}`}>
               <span>{citation.start_line + index}</span>
-              <mark>{line || " "}</mark>
+              <mark>
+                {line
+                  ? tokenizePython(line).map((token, tokenIndex) => (
+                      <span className={`tok tok--${token.kind}`} key={tokenIndex}>
+                        {token.value}
+                      </span>
+                    ))
+                  : " "}
+              </mark>
             </code>
           ))}
         </pre>

@@ -6,6 +6,7 @@ import re
 import resource
 import shutil
 import signal
+import sys
 import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
@@ -74,7 +75,11 @@ def _apply_resource_limits(
     file_bytes: int,
 ) -> None:
     resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
-    resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
+    # macOS reserves a large virtual address space, so an RLIMIT_AS ceiling makes
+    # every exec fail before the program starts. The parser applies the same
+    # carve-out; production runs on Linux, where the limit is enforced normally.
+    if sys.platform != "darwin":
+        resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
     resource.setrlimit(resource.RLIMIT_FSIZE, (file_bytes, file_bytes))
     resource.setrlimit(resource.RLIMIT_NOFILE, (256, 256))
 

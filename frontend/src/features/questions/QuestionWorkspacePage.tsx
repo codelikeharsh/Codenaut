@@ -1,19 +1,30 @@
-import { ArrowUp, BotMessageSquare, FileSearch, Network, RotateCcw } from "lucide-react";
+import {
+  ArrowUp,
+  Bot,
+  Check,
+  Copy,
+  FileCode2,
+  GitCommitHorizontal,
+  GitPullRequest,
+  Network,
+  RotateCw,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useParams } from "react-router-dom";
 import { ApiError, api } from "../../api/client";
-import type { Citation, QuestionResponse, Repository } from "../../api/contracts";
+import type { ChatExchange, Citation, QuestionResponse, Repository } from "../../api/contracts";
 import { useAuth } from "../../auth/useAuth";
+import { Avatar } from "../../components/Avatar";
 import { MarkdownAnswer } from "../../components/MarkdownAnswer";
 import { StatusBadge } from "../../components/StatusBadge";
-import { Button, EmptyState, InlineAlert, Panel, Textarea } from "../../components/ui";
-import { shortSha, titleCase } from "../../utils/format";
+import { Button, EmptyState, InlineAlert, Panel, Skeleton, Textarea } from "../../components/ui";
+import { effectiveName, shortSha, titleCase } from "../../utils/format";
 import { EvidenceInspector } from "./EvidenceInspector";
 
-interface TranscriptItem {
-  question: string;
-  response: QuestionResponse;
-}
+type TranscriptItem = ChatExchange;
+
+const MIN_QUESTION_LENGTH = 3;
 
 const examples = [
   "Where is repository authorization enforced before indexing?",
@@ -24,15 +35,22 @@ const examples = [
 export function QuestionWorkspacePage(): React.JSX.Element {
   const { repositoryId } = useParams();
   const [searchParams] = useSearchParams();
-  const { accessToken } = useAuth();
+  const { accessToken, user } = useAuth();
   const [repository, setRepository] = useState<Repository | null>(null);
   const [question, setQuestion] = useState(searchParams.get("question") ?? "");
   const [items, setItems] = useState<TranscriptItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedCitation, setSelectedCitation] = useState<Citation | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [lastFailedQuestion, setLastFailedQuestion] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const canSubmit = question.trim().length >= 3 && !loading && Boolean(repository?.searchable);
+  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  const canSubmit =
+    question.trim().length >= MIN_QUESTION_LENGTH && !loading && Boolean(repository?.searchable);
+  const userName = effectiveName(user);
 
   useEffect(() => {
     if (!accessToken || !repositoryId) return;
@@ -40,20 +58,51 @@ export function QuestionWorkspacePage(): React.JSX.Element {
     void api
       .getRepository(accessToken, repositoryId, controller.signal)
       .then(setRepository)
-      .catch(() => setError("This repository is unavailable or access was revoked."));
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setError("This repository is unavailable or access was revoked.");
+        }
+      });
+    return () => controller.abort();
+  }, [accessToken, repositoryId]);
+
+  useEffect(() => {
+    if (!accessToken || !repositoryId) return;
+    const controller = new AbortController();
+    void api
+      .listMessages(accessToken, repositoryId, controller.signal)
+      .then(setItems)
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setError("Prior chat history could not be loaded.");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setHistoryLoading(false);
+      });
     return () => controller.abort();
   }, [accessToken, repositoryId]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  useEffect(() => {
+    if (items.length === 0 && !loading) return;
+    const anchor = transcriptEndRef.current;
+    // Guarded because non-browser environments (and older engines) may not implement it.
+    if (typeof anchor?.scrollIntoView === "function") {
+      anchor.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  }, [items.length, loading]);
 
   const submitLabel = useMemo(
     () => (loading ? "Generating grounded answer" : "Ask repository"),
     [loading],
   );
 
-  async function submit(): Promise<void> {
-    if (!accessToken || !repositoryId || !canSubmit) return;
-    const submitted = question.trim();
+  async function submit(override?: string): Promise<void> {
+    if (!accessToken || !repositoryId) return;
+    const submitted = (override ?? question).trim();
+    if (submitted.length < MIN_QUESTION_LENGTH || loading || !repository?.searchable) return;
     const controller = new AbortController();
     abortRef.current = controller;
     setLoading(true);
@@ -67,8 +116,10 @@ export function QuestionWorkspacePage(): React.JSX.Element {
       );
       setItems((current) => [...current, { question: submitted, response }]);
       setQuestion("");
+      setLastFailedQuestion(null);
     } catch (caught) {
       if (!(caught instanceof DOMException && caught.name === "AbortError")) {
+        setLastFailedQuestion(submitted);
         setError(
           caught instanceof ApiError
             ? explainQuestionError(caught)
@@ -88,6 +139,30 @@ export function QuestionWorkspacePage(): React.JSX.Element {
     }
   }
 
+  async function clearHistory(): Promise<void> {
+    if (!accessToken || !repositoryId || clearing) return;
+    setClearing(true);
+    setError(null);
+    try {
+      await api.clearMessages(accessToken, repositoryId);
+      setItems([]);
+      setSelectedCitation(null);
+      setConfirmingClear(false);
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError ? caught.message : "The chat history could not be cleared.",
+      );
+    } finally {
+      setClearing(false);
+    }
+  }
+
+  function retryLast(): void {
+    if (loading || !lastFailedQuestion) return;
+    setQuestion(lastFailedQuestion);
+    void submit(lastFailedQuestion);
+  }
+
   return (
     <section className="workspace page">
       <header className="workspace__context">
@@ -99,10 +174,30 @@ export function QuestionWorkspacePage(): React.JSX.Element {
           <div className="workspace__context-meta">
             <StatusBadge status={repository.indexing_status} />
             <span className="mono">{shortSha(repository.active_commit_sha)}</span>
+            {items.length > 0 ? (
+              <Button
+                aria-label="Clear chat history"
+                onClick={() => setConfirmingClear(true)}
+                variant="quiet"
+              >
+                <Trash2 aria-hidden="true" size={15} />
+                Clear chat
+              </Button>
+            ) : null}
           </div>
         ) : null}
       </header>
-      {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
+      {error ? (
+        <InlineAlert tone="error">
+          <span>{error}</span>
+          {lastFailedQuestion && !loading ? (
+            <Button className="inline-alert__action" onClick={retryLast} variant="quiet">
+              <RotateCw aria-hidden="true" size={14} />
+              Retry
+            </Button>
+          ) : null}
+        </InlineAlert>
+      ) : null}
       {repository && !repository.searchable ? (
         <InlineAlert tone="warning">
           This repository does not have an active searchable index. You can review its indexing
@@ -114,7 +209,12 @@ export function QuestionWorkspacePage(): React.JSX.Element {
       >
         <div className="workspace-content">
           <main className="transcript" aria-label="Question workspace">
-            {items.length === 0 ? (
+            {historyLoading ? (
+              <div className="transcript-loading">
+                <Skeleton className="skeleton--row" />
+                <Skeleton className="skeleton--card" />
+              </div>
+            ) : items.length === 0 ? (
               <WorkspaceEmpty onChoose={setQuestion} />
             ) : (
               items.map((item, index) => (
@@ -122,10 +222,13 @@ export function QuestionWorkspacePage(): React.JSX.Element {
                   key={`${index}-${item.question}`}
                   item={item}
                   onCitation={setSelectedCitation}
+                  userName={userName}
+                  userColor={user?.avatar_color}
                 />
               ))
             )}
             {loading ? <GeneratingState onCancel={() => abortRef.current?.abort()} /> : null}
+            <div aria-hidden="true" ref={transcriptEndRef} />
           </main>
           <section className="composer" aria-label="Ask a repository question">
             <label htmlFor="question-input">
@@ -165,7 +268,74 @@ export function QuestionWorkspacePage(): React.JSX.Element {
         </div>
         <EvidenceInspector citation={selectedCitation} onClose={() => setSelectedCitation(null)} />
       </div>
+      {confirmingClear ? (
+        <ClearHistoryDialog
+          loading={clearing}
+          onCancel={() => setConfirmingClear(false)}
+          onConfirm={() => void clearHistory()}
+        />
+      ) : null}
     </section>
+  );
+}
+
+function ClearHistoryDialog({
+  loading,
+  onCancel,
+  onConfirm,
+}: {
+  loading: boolean;
+  onCancel(): void;
+  onConfirm(): void;
+}): React.JSX.Element {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    previousFocus.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    confirmRef.current?.focus();
+    return () => previousFocus.current?.focus();
+  }, []);
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
+    if (event.key === "Escape" && !loading) {
+      event.preventDefault();
+      onCancel();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    event.preventDefault();
+    if (document.activeElement === confirmRef.current) cancelRef.current?.focus();
+    else confirmRef.current?.focus();
+  }
+
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <section
+        aria-describedby="clear-chat-description"
+        aria-labelledby="clear-chat-title"
+        aria-modal="true"
+        className="dialog"
+        onKeyDown={onKeyDown}
+        role="dialog"
+      >
+        <h2 id="clear-chat-title">Clear this chat history?</h2>
+        <p id="clear-chat-description">
+          Your saved questions and answers for this repository are permanently deleted. The
+          repository and its index are not affected.
+        </p>
+        <div className="button-row">
+          <Button ref={confirmRef} variant="danger" loading={loading} onClick={onConfirm}>
+            Delete chat history
+          </Button>
+          <Button ref={cancelRef} disabled={loading} onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -191,10 +361,10 @@ function WorkspaceEmpty({ onChoose }: { onChoose(value: string): void }): React.
 function GeneratingState({ onCancel }: { onCancel(): void }): React.JSX.Element {
   return (
     <Panel className="generating-state">
-      <BotMessageSquare aria-hidden="true" size={18} />
+      <Bot aria-hidden="true" size={18} />
       <div>
         <strong>Preparing a grounded answer</strong>
-        <p>RepoLume is using only the active repository evidence and approved tools.</p>
+        <p>Codenaut is using only the active repository evidence and approved tools.</p>
       </div>
       <Button onClick={onCancel} variant="quiet">
         Cancel
@@ -206,9 +376,13 @@ function GeneratingState({ onCancel }: { onCancel(): void }): React.JSX.Element 
 function TranscriptEntry({
   item,
   onCitation,
+  userName,
+  userColor,
 }: {
   item: TranscriptItem;
   onCitation(citation: Citation): void;
+  userName: string;
+  userColor: string | null | undefined;
 }): React.JSX.Element {
   const responseTone =
     item.response.answerability === "answered"
@@ -217,36 +391,93 @@ function TranscriptEntry({
         ? "warning"
         : "neutral";
   return (
-    <article className="transcript-entry">
-      <div className="question-block">
-        <p className="eyebrow">Question</p>
-        <p>{item.question}</p>
-      </div>
-      <div className="answer-block">
-        <div className="answer-block__header">
-          <div>
-            <p className="eyebrow">Answer</p>
-            <StatusBadge status={item.response.answerability} />
-          </div>
-          <span className="muted">
-            {item.response.duration_ms} ms · {item.response.tool_call_count} tools
-          </span>
+    <>
+      <div className="chat-message chat-message--user">
+        <span className="chat-message__avatar">
+          <Avatar color={userColor} name={userName} size="sm" />
+        </span>
+        <div className="chat-message__body">
+          <div className="chat-bubble">{item.question}</div>
         </div>
-        {item.response.answerability !== "answered" ? (
-          <InlineAlert tone={responseTone === "warning" ? "warning" : "neutral"}>
-            {titleCase(item.response.answerability)}: this response is intentionally limited by
-            available evidence.
-          </InlineAlert>
-        ) : null}
-        <MarkdownAnswer>{item.response.answer}</MarkdownAnswer>
-        <CitationList citations={item.response.citations} onCitation={onCitation} />
-        <ToolTrace trace={item.response.trace} />
       </div>
-    </article>
+      <div className="chat-message chat-message--assistant">
+        <span className="chat-message__avatar chat-bot-mark" aria-hidden="true">
+          <Bot size={16} />
+        </span>
+        <div className="chat-message__body">
+          <div className="chat-bubble">
+            {item.response.answerability !== "answered" ? (
+              <InlineAlert tone={responseTone === "warning" ? "warning" : "neutral"}>
+                {titleCase(item.response.answerability)}: this response is intentionally limited by
+                available evidence.
+              </InlineAlert>
+            ) : null}
+            <MarkdownAnswer>{item.response.answer}</MarkdownAnswer>
+            <SourceChips citations={item.response.citations} onCitation={onCitation} />
+            <ToolTrace trace={item.response.trace} />
+          </div>
+          <div className="chat-message__meta">
+            <StatusBadge status={item.response.answerability} />
+            <span>
+              {item.response.duration_ms} ms · {item.response.tool_call_count} tools
+            </span>
+            <CopyAnswerButton answer={item.response.answer} />
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
-function CitationList({
+function CopyAnswerButton({ answer }: { answer: string }): React.JSX.Element {
+  const [copied, setCopied] = useState(false);
+
+  async function copy(): Promise<void> {
+    try {
+      await navigator.clipboard?.writeText(answer);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // Clipboard access can be denied; leaving the label unchanged is the correct signal.
+    }
+  }
+
+  return (
+    <button className="copy-answer" onClick={() => void copy()} type="button">
+      {copied ? <Check aria-hidden="true" size={13} /> : <Copy aria-hidden="true" size={13} />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function citationLabel(citation: Citation): string {
+  if (citation.source_type === "code") {
+    const fileName = citation.file_path.split("/").pop() ?? citation.file_path;
+    return `${fileName}:${citation.start_line}`;
+  }
+  if (citation.source_type === "caller") {
+    return citation.caller_qualified_name;
+  }
+  if (citation.source_type === "commit") {
+    return shortSha(citation.commit_sha);
+  }
+  return `PR #${citation.number}`;
+}
+
+function citationIcon(citation: Citation): React.ReactNode {
+  switch (citation.source_type) {
+    case "code":
+      return <FileCode2 aria-hidden="true" size={13} />;
+    case "caller":
+      return <Network aria-hidden="true" size={13} />;
+    case "commit":
+      return <GitCommitHorizontal aria-hidden="true" size={13} />;
+    case "pull_request":
+      return <GitPullRequest aria-hidden="true" size={13} />;
+  }
+}
+
+function SourceChips({
   citations,
   onCitation,
 }: {
@@ -256,32 +487,20 @@ function CitationList({
   if (citations.length === 0)
     return <p className="muted evidence-empty">No supporting citation was returned.</p>;
   return (
-    <section className="citation-list" aria-label="Supporting evidence">
-      <p className="eyebrow">Evidence</p>
+    <div className="source-chips" aria-label="Sources for this answer">
+      <span className="source-chips__label">Sources</span>
       {citations.map((citation, index) => (
-        <button key={citation.evidence_id} onClick={() => onCitation(citation)}>
-          <span>[{index + 1}]</span>
-          {citation.source_type === "code" ? (
-            <>
-              <FileSearch aria-hidden="true" size={15} />
-              {citation.file_path}:{citation.start_line}
-            </>
-          ) : citation.source_type === "caller" ? (
-            <>
-              <Network aria-hidden="true" size={15} />
-              {citation.caller_qualified_name}
-            </>
-          ) : (
-            <>
-              <RotateCcw aria-hidden="true" size={15} />
-              {citation.source_type === "commit"
-                ? shortSha(citation.commit_sha)
-                : `PR #${citation.number}`}
-            </>
-          )}
+        <button
+          className="source-chip"
+          key={citation.evidence_id}
+          onClick={() => onCitation(citation)}
+        >
+          <span className="source-chip__index">{index + 1}</span>
+          {citationIcon(citation)}
+          <span>{citationLabel(citation)}</span>
         </button>
       ))}
-    </section>
+    </div>
   );
 }
 

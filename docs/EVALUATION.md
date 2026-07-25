@@ -1,4 +1,4 @@
-# RepoLume Evaluation
+# Codenaut Evaluation
 
 **Status:** Milestone 6–9 quality baselines remain unchanged. Milestone 11 adds adversarial security regressions, not a new answer-quality score. Fixture-contract observations remain structural expectations with `null` latency; they are not live GitHub reliability, hosted-LLM quality, or production performance evidence.
 

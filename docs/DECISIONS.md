@@ -1,4 +1,4 @@
-# RepoLume Architecture Decision Log
+# Codenaut Architecture Decision Log
 
 Decisions are append-only. If a decision changes, add a superseding entry instead of silently rewriting history.
 
@@ -509,3 +509,75 @@ Decisions are append-only. If a decision changes, add a superseding entry instea
 - **Decision:** Fail production frontend builds unless `VITE_API_BASE_URL` is credential-free HTTPS with the exact `/api/v1` path. Generate Vercel CSP `connect-src` from that origin and add HSTS, nosniff, frame denial, no-referrer, permissions restrictions, and SPA rewrites.
 - **Rationale:** A broad `connect-src https:` or hard-coded unapproved domain would permit browser data egress or create hidden environment drift.
 - **Consequence:** Every preview environment needs an explicit non-production API base. The production smoke script must verify actual edge headers before launch.
+
+## D-066 — Reviewed, allowlisted npm audit exception for GHSA-qwww-vcr4-c8h2
+
+- **Date:** 2026-07-25
+- **Status:** Accepted
+- **Decision:** Replace the plain `npm audit --audit-level=high` CI gate with `frontend/scripts/check-audit.mjs`, which fails on any high/critical advisory except a small, explicit, justified allowlist. The only current entry is `GHSA-qwww-vcr4-c8h2` (React Router RSC Mode CSRF bypass).
+- **Rationale:** `react-router-dom@7.18.1` is the newest available 7.x release and already fixes ten other historical high-severity advisories (XSS, open redirect, CSRF, DoS, constructor injection). The remaining advisory only affects RSC/framework/server-action mode, which this client-side SPA never enables (it only uses declarative `BrowserRouter`). Downgrading to the only "fixed" release npm offers (`7.11.0`) would reintroduce those ten other advisories, a strictly worse outcome. No react-router-dom release exists that is both >=8 and free of the RSC advisory.
+- **Consequence:** Any new high/critical advisory anywhere in the dependency tree still fails CI, since the allowlist only matches this one advisory id by exact GHSA identifier. Revisit and drop the entry once react-router-dom ships a fixed release, or if the app ever adopts RSC/framework mode. Separately, `brace-expansion`/`minimatch` were bumped to patched versions via `package.json` `overrides` (no eslint major upgrade required), which resolved the other twelve findings outright rather than requiring an exception.
+
+## D-067 — Rebrand the product to Codenaut
+
+- **Date:** 2026-07-25
+- **Status:** Accepted
+- **Decision:** Rename the product from RepoLume to Codenaut across the browser application, page metadata, npm package name, and test fixtures. Backend Python package names, database identifiers, Redis stream names, and existing Alembic revisions were intentionally left unchanged.
+- **Rationale:** The user-visible identity is the part that needed to change. Renaming durable infrastructure identifiers would require data migration and coordinated redeployment for no product benefit.
+- **Consequence:** Internal identifiers still read `repolume` in places (worker stream, service names, lockfile package ids). That divergence is deliberate; do not "fix" it opportunistically without a migration plan.
+
+## D-068 — Own the design system instead of inheriting GitHub's palette
+
+- **Date:** 2026-07-25
+- **Status:** Accepted
+- **Decision:** Replace the previous color tokens — which were GitHub's dark-theme values — with a Codenaut-specific palette, spacing/radius/motion scale, and a full light theme. Theme selection is a `data-theme` attribute on the document element, chosen before first paint by an inline script and persisted in `localStorage`.
+- **Rationale:** Borrowed product colors made the interface read as a generic scaffold. Resolving the theme before paint avoids a flash of the wrong theme, which no amount of in-React handling can prevent.
+- **Consequence:** New surfaces must use the semantic custom properties rather than literal colors, and must be checked in both themes. The inline theme script is security-relevant page content and must stay inline (not a CDN import) to satisfy the CSP.
+
+## D-069 — Separate user-editable profile fields from provider-synced identity
+
+- **Date:** 2026-07-25
+- **Status:** Accepted
+- **Decision:** Add `users.custom_display_name` and `users.avatar_color` alongside the existing provider-synced `display_name`/`avatar_url`, and expose `PATCH /api/v1/auth/me` restricted to those two fields. Avatars are rendered as generated initials over a palette color; no image upload or external avatar URL is accepted.
+- **Rationale:** GitHub and Google login overwrite `display_name`/`avatar_url` on every sign-in, so editing them directly would silently revert. Generated initials avoid adding object storage, image validation, and a new untrusted-content surface for a cosmetic feature.
+- **Consequence:** `avatar_color` is validated against a fixed server-side palette; arbitrary values are rejected. Display precedence is custom name, then provider name, then login.
+
+## D-070 — Persist one continuous chat transcript per user per repository
+
+- **Date:** 2026-07-25
+- **Status:** Accepted
+- **Decision:** Activate the previously unused `chat_sessions`/`chat_messages` tables with a uniqueness constraint on `(repository_id, created_by_user_id)`, persist each answered question as a user/assistant message pair, and serve it from `GET /api/v1/repositories/{id}/messages`. Persistence failures are logged and swallowed rather than failing the answer.
+- **Rationale:** The schema already existed from an early milestone and matched the need. One session per user per repository matches the current single-thread interface without inventing a conversation-list concept the UI does not have.
+- **Consequence:** Answer latency is not preserved across reloads (`duration_ms` is reported as 0 for restored exchanges) because it describes a past request, not the stored answer. Restored citations are re-validated through the same typed contracts as live ones.
+
+## D-071 — Give users a delete path for their own chat history
+
+- **Date:** 2026-07-25
+- **Status:** Accepted
+- **Decision:** Add `DELETE /api/v1/repositories/{id}/messages`, scoped by both repository and authenticated creator, with a confirming dialog in the browser. Deleting the session cascades to its messages.
+- **Rationale:** Chat persistence introduced a durable store of user-authored text while durable account deletion and retention remain deferred. Shipping a write path without a delete path would widen that gap.
+- **Consequence:** This covers user-initiated deletion only. Full account deletion, retention schedules, and coordinated PostgreSQL/Qdrant purge remain outstanding and unchanged by this decision.
+
+## D-072 — Enforce per-user question quotas in Redis and fail open
+
+- **Date:** 2026-07-25
+- **Status:** Accepted
+- **Decision:** Add fixed-window per-minute and per-day question quotas keyed only by user id in Redis, checked before any embedding, retrieval, or model call. A Redis outage allows the request and logs `rate_limit_unavailable`.
+- **Rationale:** Every question costs a hosted-model call plus embedding and vector work, and the endpoint previously had no ceiling at all; `RATE_LIMIT_EXCEEDED` existed as an unused error code. Failing closed on a Redis outage would convert a cache incident into a total outage for authenticated users.
+- **Consequence:** Quotas are best-effort during a Redis incident, which is an accepted, logged trade-off rather than a silent one. Keys contain no question text. Quotas are disabled by default in the test settings so only dedicated tests exercise them.
+
+## D-073 — Meter usage through a task-local accumulator, not the provider protocols
+
+- **Date:** 2026-07-25
+- **Status:** Accepted
+- **Decision:** Activate the previously unused `usage_records` table. Provider clients report token counts (from the provider envelope) and embedding units into a `contextvars`-scoped accumulator, and the question endpoint persists one content-free row per operation.
+- **Rationale:** Threading usage through `AgentProviderProtocol` would have changed every provider, adapter, and test fake, and storing "last usage" on a shared client instance would race across concurrent requests. Context variables are copied per asyncio task, so attribution is correct without touching any protocol. Token counts are read only from the provider envelope, never from model-authored JSON, so a model cannot fabricate its own billing numbers.
+- **Consequence:** Token columns stay NULL when no provider reported usage, so null means "unknown" rather than "free". `estimated_cost` is left NULL until per-model pricing is configured. Accounting failures never fail the answer.
+
+## D-074 — Highlight code with a dependency-free tokenizer
+
+- **Date:** 2026-07-25
+- **Status:** Accepted
+- **Decision:** Render syntax highlighting for indexed Python through a small in-repo tokenizer that returns token objects, which React renders as elements. No highlighting library was added, and no HTML string is ever produced.
+- **Rationale:** Repository content is untrusted, so any highlighter that emits HTML would create an injection path requiring `dangerouslySetInnerHTML`. Adding a highlighting dependency also enlarges the audited supply chain for a single presentational feature, and code intelligence is Python-only today.
+- **Consequence:** Highlighting covers Python and degrades to plain text for other languages and for excerpts over 20,000 characters. If multi-language indexing lands, revisit this rather than growing the regex set indefinitely.

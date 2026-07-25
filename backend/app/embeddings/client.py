@@ -11,6 +11,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.core.config import Settings
+from app.core.usage_context import record_embedding_units
 from app.embeddings.preprocessing import PreparedEmbedding
 from app.indexing.failures import IndexingError
 
@@ -143,6 +144,7 @@ class EmbeddingServiceClient:
         expected_ids = [document.item_id for document in documents]
         if len(set(expected_ids)) != len(expected_ids):
             raise self._invalid_response("duplicate_embedding_request_id")
+        record_embedding_units(len(documents))
         payload = _EmbeddingRequest(
             kind=kind,
             documents=[

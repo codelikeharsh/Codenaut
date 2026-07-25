@@ -46,7 +46,12 @@ class Settings(BaseSettings):
     max_total_text_bytes: int = Field(default=1024 * 1024, ge=1024)
     max_request_bytes: int = Field(default=1200 * 1024, ge=1024)
     request_timeout_seconds: float = Field(default=60.0, gt=0, le=300)
-    max_concurrent_requests: int = Field(default=2, ge=1, le=32)
+    # A single onnxruntime CPU session backs this whole process. Serving two
+    # inference batches through Session.run() at once (rather than an actual
+    # request-body concurrency limit) has been observed to crash the process
+    # outright with no Python-level exception, so default to fully serialized
+    # inference until the service is split across multiple worker processes.
+    max_concurrent_requests: int = Field(default=1, ge=1, le=32)
 
     @field_validator("service_token")
     @classmethod

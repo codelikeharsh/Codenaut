@@ -2,21 +2,30 @@
 
 import uuid
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from app.db.models.enums import AnswerStatus, ChatRole, Confidence, database_enum
+from app.db.models.enums import (
+    AnswerStatus,
+    AnswerUncertaintyLevel,
+    ChatRole,
+    Confidence,
+    database_enum,
+)
 
 
 class ChatSession(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    """A chat session scoped to exactly one repository."""
+    """The single continuous chat session for one user on one repository."""
 
     __tablename__ = "chat_sessions"
     __table_args__ = (
         Index("ix_chat_sessions_repository_updated", "repository_id", "updated_at"),
         Index("ix_chat_sessions_creator_updated", "created_by_user_id", "updated_at"),
+        UniqueConstraint(
+            "repository_id", "created_by_user_id", name="uq_chat_sessions_repository_user"
+        ),
     )
 
     repository_id: Mapped[uuid.UUID] = mapped_column(
@@ -66,3 +75,8 @@ class ChatMessage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default=text("'[]'::jsonb"),
     )
     indexed_commit_sha: Mapped[str | None] = mapped_column(String(64))
+    uncertainty: Mapped[AnswerUncertaintyLevel | None] = mapped_column(
+        database_enum(AnswerUncertaintyLevel, name="answer_uncertainty_level")
+    )
+    active_index_version: Mapped[int | None] = mapped_column()
+    retrieved_evidence_count: Mapped[int | None] = mapped_column()

@@ -1,4 +1,4 @@
-# RepoLume Operations
+# Codenaut Operations
 
 **Status:** Milestone 12 repository deployment configuration and runbooks are locally verified. No live GitHub/hosted-LLM acceptance, hosted frontend/API/private service, dashboard, alert, managed backup, restore, rollback, or final deletion drill has been verified because provider access is unavailable.
 
@@ -42,7 +42,7 @@ Before a production process is allowed to start, verify these configuration inva
 - PostgreSQL uses `postgresql+asyncpg`, managed credentials, a non-local host, and `ssl=require`, `ssl=verify-ca`, or `ssl=verify-full`; Redis uses authenticated `rediss://`.
 - CORS and `FRONTEND_URL` are credential-free HTTPS origins. GitHub and enabled Google callbacks use their exact `/api/v1/auth/.../callback` paths and their hosts appear in `TRUSTED_HOSTS`.
 - The LLM base is exactly `https://api.openai.com/v1` or `https://generativelanguage.googleapis.com/v1beta/openai`; do not route private evidence through a generic proxy without a code/security review.
-- GitHub, enabled Google, RepoLume token, embedding, Qdrant, and LLM credentials come from the platform secret store, meet minimum length, and are not documentation/test placeholders.
+- GitHub, enabled Google, Codenaut token, embedding, Qdrant, and LLM credentials come from the platform secret store, meet minimum length, and are not documentation/test placeholders.
 - Qdrant and the embedding service use authenticated HTTPS private endpoints. The embedding image has the pinned model preloaded at an absolute cache path and `EMBEDDING_MODEL_LOCAL_FILES_ONLY=true`.
 
 The process refuses unsafe critical settings with a generic configuration error. Do not bypass this validation to recover a deployment.
@@ -110,7 +110,7 @@ Migration upgrade, current-revision, consistency, and downgrade commands are ava
 5. Revoke the old credential and monitor failures.
 6. Record rotation time and affected secret name, never the value.
 
-`ACCESS_TOKEN_SECRET` rotation currently invalidates access tokens (maximum default lifetime 15 minutes). `TOKEN_HASH_SECRET` rotation invalidates all refresh tokens and outstanding OAuth state, requiring users to sign in again. GitHub client secret, private key, and webhook-secret rotation must follow GitHub's supported overlap/replacement sequence. Overlapping RepoLume key IDs are not implemented, so schedule and communicate the session invalidation.
+`ACCESS_TOKEN_SECRET` rotation currently invalidates access tokens (maximum default lifetime 15 minutes). `TOKEN_HASH_SECRET` rotation invalidates all refresh tokens and outstanding OAuth state, requiring users to sign in again. GitHub client secret, private key, and webhook-secret rotation must follow GitHub's supported overlap/replacement sequence. Overlapping Codenaut key IDs are not implemented, so schedule and communicate the session invalidation.
 
 ### GitHub webhook troubleshooting
 
@@ -189,7 +189,7 @@ Implemented local recovery procedure:
 
 ## Backup and recovery
 
-Neon and Qdrant backup policies, Redis persistence, recovery objectives, restore drills, and responsible operators are undecided and unverified. Before production launch, RepoLume must document actual provider settings and execute recovery tests. Raw clones are intentionally not backed up.
+Neon and Qdrant backup policies, Redis persistence, recovery objectives, restore drills, and responsible operators are undecided and unverified. Before production launch, Codenaut must document actual provider settings and execute recovery tests. Raw clones are intentionally not backed up.
 
 ## Deployment and migrations
 
@@ -219,7 +219,7 @@ python3.13 -m venv .venv
 .venv/bin/python -m pip install --require-hashes --requirement embedding_service/requirements-dev.lock
 ```
 
-Supply local values through an untracked `.env` or process environment. Configure real PostgreSQL, Redis, Qdrant, and private embedding endpoints plus test-only GitHub/RepoLume authentication values. Integration tests require `TEST_DATABASE_URL`, `TEST_REDIS_URL`, `TEST_QDRANT_URL`, `TEST_EMBEDDING_SERVICE_URL`, and `TEST_EMBEDDING_SERVICE_TOKEN`; they destroy disposable test state and never fall back to SQLite or in-memory queue/vector/model substitutes.
+Supply local values through an untracked `.env` or process environment. Configure real PostgreSQL, Redis, Qdrant, and private embedding endpoints plus test-only GitHub/Codenaut authentication values. Integration tests require `TEST_DATABASE_URL`, `TEST_REDIS_URL`, `TEST_QDRANT_URL`, `TEST_EMBEDDING_SERVICE_URL`, and `TEST_EMBEDDING_SERVICE_TOKEN`; they destroy disposable test state and never fall back to SQLite or in-memory queue/vector/model substitutes.
 
 Parser defaults and documentation are in `.env.example`. Tune them as one validated set: parser input cannot exceed the discovery file ceiling; chunks cannot exceed symbol/document-section ceilings; child CPU cannot exceed the parent wall timeout. Do not increase bounds for untrusted repositories without capacity and failure testing.
 

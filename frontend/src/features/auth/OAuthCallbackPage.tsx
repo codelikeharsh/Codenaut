@@ -18,7 +18,7 @@ export function OAuthCallbackPage(): React.JSX.Element {
   }, [navigate, state]);
 
   return (
-    <main className="sign-in">
+    <main className="sign-in sign-in--centered">
       <Panel className="sign-in__panel callback-panel">
         {failed ? (
           <>
@@ -40,7 +40,7 @@ export function OAuthCallbackPage(): React.JSX.Element {
             <LoaderCircle aria-hidden="true" className="spinner" size={22} />
             <p className="eyebrow">Secure authorization</p>
             <h1>Finishing your secure session.</h1>
-            <p>RepoLume is confirming the browser session without exposing provider credentials.</p>
+            <p>Codenaut is confirming the browser session without exposing provider credentials.</p>
           </>
         )}
       </Panel>

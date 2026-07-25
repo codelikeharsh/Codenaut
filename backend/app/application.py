@@ -21,6 +21,7 @@ from app.embeddings.client import EmbeddingProviderProtocol, EmbeddingServiceCli
 from app.github.client import GitHubClient, GitHubClientProtocol
 from app.llm.client import LLMProviderProtocol, create_llm_provider
 from app.queue import JobQueueProtocol, RedisJobQueue
+from app.services.rate_limit import RateLimiterProtocol, create_rate_limiter
 from app.vector.qdrant import QdrantVectorStore, VectorReadinessProtocol
 
 logger = structlog.get_logger(__name__)
@@ -35,6 +36,7 @@ def create_app(  # noqa: PLR0915 -- explicit dependency lifecycle is intentional
     vector_store: VectorReadinessProtocol | None = None,
     embedding_provider: EmbeddingProviderProtocol | None = None,
     llm_provider: LLMProviderProtocol | None = None,
+    rate_limiter: RateLimiterProtocol | None = None,
 ) -> FastAPI:
     """Create a fully configured application with explicit dependencies."""
     resolved_settings = settings or load_settings()
@@ -49,6 +51,7 @@ def create_app(  # noqa: PLR0915 -- explicit dependency lifecycle is intentional
     resolved_vector_store = vector_store or QdrantVectorStore(resolved_settings)
     resolved_embedding_provider = embedding_provider or EmbeddingServiceClient(resolved_settings)
     resolved_llm_provider = llm_provider or create_llm_provider(resolved_settings)
+    resolved_rate_limiter = rate_limiter or create_rate_limiter(resolved_settings)
     token_service = TokenService(resolved_settings)
 
     @asynccontextmanager
@@ -62,6 +65,7 @@ def create_app(  # noqa: PLR0915 -- explicit dependency lifecycle is intentional
         app.state.vector_store = resolved_vector_store
         app.state.embedding_provider = resolved_embedding_provider
         app.state.llm_provider = resolved_llm_provider
+        app.state.rate_limiter = resolved_rate_limiter
         logger.info("application_started", **resolved_settings.safe_summary())
         try:
             yield
@@ -73,6 +77,7 @@ def create_app(  # noqa: PLR0915 -- explicit dependency lifecycle is intentional
             await resolved_vector_store.close()
             await resolved_embedding_provider.close()
             await resolved_llm_provider.close()
+            await resolved_rate_limiter.close()
             logger.info("application_stopped")
 
     docs_url = "/docs" if resolved_settings.docs_enabled else None
@@ -95,6 +100,7 @@ def create_app(  # noqa: PLR0915 -- explicit dependency lifecycle is intentional
     app.state.vector_store = resolved_vector_store
     app.state.embedding_provider = resolved_embedding_provider
     app.state.llm_provider = resolved_llm_provider
+    app.state.rate_limiter = resolved_rate_limiter
 
     app.add_middleware(
         TrustedHostMiddleware,

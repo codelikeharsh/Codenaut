@@ -97,6 +97,10 @@ class ParsedCallSite:
     expression: str
     start_line: int
     end_line: int
+    # Column disambiguates repeated calls to the same target on one line, e.g.
+    # ``helper(1) + helper(2)``. Without it two distinct sites collapse to one
+    # fingerprint and collide on the call-edge primary key.
+    start_column: int = 0
 
 
 @dataclass(frozen=True, slots=True)

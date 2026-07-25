@@ -24,7 +24,12 @@ from app.db.models.enums import AuthProvider
 from app.db.models.user import User
 from app.db.session import Database
 from app.github.client import GitHubAPIError, GitHubClientProtocol
-from app.schemas.auth import AccessTokenResponse, AuthenticationResponse, UserResponse
+from app.schemas.auth import (
+    AccessTokenResponse,
+    AuthenticationResponse,
+    UpdateProfileRequest,
+    UserResponse,
+)
 from app.schemas.errors import ErrorCode
 from app.services.auth import (
     AccountLinkRequiredError,
@@ -59,6 +64,8 @@ def _user_response(user: User, providers: tuple[AuthProvider, ...]) -> UserRespo
         avatar_url=user.avatar_url,
         email=user.email,
         linked_providers=[provider.value for provider in providers],
+        custom_display_name=user.custom_display_name,
+        avatar_color=user.avatar_color,
     )
 
 
@@ -266,3 +273,20 @@ async def logout(request: Request, origin: CookieOrigin) -> Response:
 async def authenticated_user(request: Request, user: CurrentUser) -> UserResponse:
     providers = await _service(request).identity_providers(user.id)
     return _user_response(user, providers)
+
+
+@router.patch("/me")
+async def update_profile(
+    request: Request, user: CurrentUser, body: UpdateProfileRequest
+) -> UserResponse:
+    fields_set = body.model_fields_set
+    updated = await _service(request).update_profile(
+        user.id,
+        custom_display_name=body.custom_display_name,
+        avatar_color=body.avatar_color,
+        clear_custom_display_name="custom_display_name" in fields_set
+        and body.custom_display_name is None,
+        clear_avatar_color="avatar_color" in fields_set and body.avatar_color is None,
+    )
+    providers = await _service(request).identity_providers(updated.id)
+    return _user_response(updated, providers)

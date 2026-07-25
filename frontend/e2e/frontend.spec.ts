@@ -15,7 +15,7 @@ const repository = {
   github_owner: "octocat",
   github_name: LONG_REPOSITORY_NAME.split("/")[1],
   github_full_name: LONG_REPOSITORY_NAME,
-  github_url: "https://github.com/octocat/repolume",
+  github_url: "https://github.com/octocat/codenaut",
   is_private: true,
   default_branch: "main",
   primary_language: "Python",
@@ -112,7 +112,7 @@ const answer = {
       changed_paths: [LONG_PATH],
       patch_excerpt: "- unsafe path\n+ validated repository authorization",
       html_url:
-        "https://github.com/octocat/repolume/commit/aabbccddeeff00112233445566778899aabbccdd",
+        "https://github.com/octocat/codenaut/commit/aabbccddeeff00112233445566778899aabbccdd",
     },
     {
       source_type: "pull_request",
@@ -259,6 +259,10 @@ async function installApiFixture(page: Page, expired = false): Promise<void> {
       await fulfillJson(route, answer);
       return;
     }
+    if (pathname === `/api/v1/repositories/${REPOSITORY_ID}/messages`) {
+      await fulfillJson(route, []);
+      return;
+    }
     if (pathname === `/api/v1/repositories/${REPOSITORY_ID}`) {
       await fulfillJson(route, repository);
       return;
@@ -282,9 +286,7 @@ test("sign-in, failed OAuth callback, and expired protected session are understa
 }) => {
   await installApiFixture(page, true);
   await page.goto("/signin");
-  await expect(
-    page.getByRole("heading", { name: "Understand the code you are authorized to see." }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome to Codenaut" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue with GitHub" })).toBeVisible();
 
   await page.goto("/auth/callback");
@@ -325,7 +327,7 @@ for (const [name, viewport] of Object.entries({
     const search = page.getByPlaceholder("Search authorized repositories");
     await search.focus();
     await expect(search).toBeFocused();
-    await expect(search).toHaveCSS("outline-style", "solid");
+    await expect(page.locator(".search-input")).not.toHaveCSS("box-shadow", "none");
 
     if (name === "mobile") {
       await page.getByRole("button", { name: "Open navigation" }).click();
@@ -375,7 +377,7 @@ test("question workspace renders limited evidence safely and inspects every cita
   await expect(page.locator(".markdown-answer img")).toHaveCount(0);
   await expect(page.locator(".markdown-answer a")).toHaveCount(0);
 
-  const codeEvidence = page.getByRole("button", { name: new RegExp(LONG_PATH) });
+  const codeEvidence = page.getByRole("button", { name: /authorization_boundary\.py:12/ });
   await codeEvidence.click();
   await expect(page.getByRole("complementary", { name: "Evidence inspector" })).toContainText(
     "Copy citation",

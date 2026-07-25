@@ -88,7 +88,7 @@ ignore = [
 "app/schemas/errors.py" = ["S105"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
 warn_unused_configs = true

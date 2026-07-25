@@ -14,11 +14,14 @@ export const testAuth: AuthContextValue = {
     avatar_url: null,
     email: null,
     linked_providers: ["github"],
+    custom_display_name: null,
+    avatar_color: null,
   },
   accessToken: "test-access-token",
   signIn: () => undefined,
   signOut: async () => undefined,
   refreshSession: async () => true,
+  updateUser: () => undefined,
 };
 
 export function renderWithApp(

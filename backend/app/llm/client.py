@@ -21,6 +21,7 @@ from app.core.config import (
     Settings,
 )
 from app.core.request_context import get_request_id
+from app.core.usage_context import record_tokens
 from app.rag.models import Answerability, AnswerUncertainty
 
 _HTTP_OK = 200
@@ -115,12 +116,39 @@ class _ResponseOutput(BaseModel):
     content: list[_ResponseContent] = Field(default_factory=list)
 
 
+class _TokenUsage(BaseModel):
+    """Provider-envelope token counts. Never sourced from model-authored JSON."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+
+    def normalized(self) -> tuple[int | None, int | None]:
+        return (
+            self.input_tokens if self.input_tokens is not None else self.prompt_tokens,
+            self.output_tokens if self.output_tokens is not None else self.completion_tokens,
+        )
+
+
+def _report_usage(usage: "_TokenUsage | None") -> None:
+    """Forward provider-declared token counts to the active usage accumulator."""
+    if usage is None:
+        record_tokens(input_tokens=None, output_tokens=None)
+        return
+    input_tokens, output_tokens = usage.normalized()
+    record_tokens(input_tokens=input_tokens, output_tokens=output_tokens)
+
+
 class _ResponsesPayload(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     status: str
     model: str
     output: list[_ResponseOutput]
+    usage: _TokenUsage | None = None
 
 
 class _ChatCompletionMessage(BaseModel):
@@ -143,6 +171,7 @@ class _ChatCompletionsPayload(BaseModel):
 
     model: str | None = None
     choices: list[_ChatCompletionChoice] = Field(default_factory=list)
+    usage: _TokenUsage | None = None
 
 
 class OpenAIResponsesClient:
@@ -193,6 +222,7 @@ class OpenAIResponsesClient:
             parsed = _ResponsesPayload.model_validate(response.json())
         except (ValueError, ValidationError) as error:
             raise LLMProviderError("llm_malformed_response", retryable=False) from error
+        _report_usage(parsed.usage)
         if parsed.status != "completed" or parsed.model != self._model:
             raise LLMProviderError("llm_response_mismatch", retryable=False)
         output_texts = [
@@ -292,6 +322,7 @@ class OpenAIResponsesClient:
             parsed = _ResponsesPayload.model_validate(response.json())
         except (ValueError, ValidationError) as error:
             raise LLMProviderError("llm_malformed_response", retryable=False) from error
+        _report_usage(parsed.usage)
         if parsed.status != "completed" or parsed.model != self._model:
             raise LLMProviderError("llm_response_mismatch", retryable=False)
         output_texts = [
@@ -459,6 +490,7 @@ class GeminiChatCompletionsClient:
             parsed = _ChatCompletionsPayload.model_validate(response.json())
         except (ValueError, ValidationError) as error:
             raise LLMProviderError("llm_malformed_response", retryable=False) from error
+        _report_usage(parsed.usage)
         if len(parsed.choices) != 1:
             raise LLMProviderError("llm_unusable_response", retryable=False)
         choice = parsed.choices[0]

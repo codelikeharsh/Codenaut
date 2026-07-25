@@ -109,6 +109,13 @@ class Confidence(StrEnum):
     LOW = "low"
 
 
+class AnswerUncertaintyLevel(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    NOT_APPLICABLE = "not_applicable"
+
+
 class SymbolType(StrEnum):
     FUNCTION = "function"
     ASYNC_FUNCTION = "async_function"

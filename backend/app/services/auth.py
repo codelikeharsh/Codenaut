@@ -373,6 +373,29 @@ class AuthService:
             )
             return tuple(result.all())
 
+    async def update_profile(
+        self,
+        user_id: uuid.UUID,
+        *,
+        custom_display_name: str | None,
+        avatar_color: str | None,
+        clear_custom_display_name: bool,
+        clear_avatar_color: bool,
+    ) -> User:
+        async with self._database.session() as session:
+            user = await session.get_one(User, user_id)
+            if custom_display_name is not None:
+                user.custom_display_name = custom_display_name
+            elif clear_custom_display_name:
+                user.custom_display_name = None
+            if avatar_color is not None:
+                user.avatar_color = avatar_color
+            elif clear_avatar_color:
+                user.avatar_color = None
+            await session.flush()
+            await session.commit()
+        return user
+
     async def _upsert_installation(
         self,
         session: AsyncSession,

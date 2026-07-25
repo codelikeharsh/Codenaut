@@ -1,6 +1,9 @@
 """Safe clone command and non-executing discovery security tests."""
 
 import asyncio
+import resource as resource_module
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock
@@ -204,9 +207,11 @@ def test_resource_limits_are_applied(monkeypatch: pytest.MonkeyPatch) -> None:
 
     _apply_resource_limits(cpu_seconds=10, memory_bytes=20, file_bytes=30)
 
-    assert len(applied) == 4
+    # RLIMIT_AS is deliberately skipped on macOS, where it makes exec fail.
+    expected_memory_limit = sys.platform != "darwin"
+    assert len(applied) == (4 if expected_memory_limit else 3)
     assert (10, 10) in {limits for _, limits in applied}
-    assert (20, 20) in {limits for _, limits in applied}
+    assert ((20, 20) in {limits for _, limits in applied}) is expected_memory_limit
     assert (30, 30) in {limits for _, limits in applied}
 
 
@@ -305,3 +310,43 @@ def test_discovery_rejects_symlink_escape_and_skips_internal_symlink(tmp_path: P
 def test_discovery_rejects_missing_clone_root(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         FileDiscovery(make_settings()).discover(tmp_path / "missing")
+
+
+def test_clone_resource_limits_can_actually_launch_a_subprocess() -> None:
+    """Limits must not make exec fail on the host platform.
+
+    Regression: RLIMIT_AS raised inside preexec_fn on macOS, so git never
+    started and every index failed with an opaque SubprocessError. The parser
+    already carved this out; the clone path did not.
+    """
+    completed = subprocess.run(
+        [sys.executable, "-c", "print('launched')"],
+        preexec_fn=lambda: _apply_resource_limits(
+            cpu_seconds=120, memory_bytes=1073741824, file_bytes=2097152
+        ),
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert completed.stdout.decode().strip() == "launched"
+
+
+def test_clone_still_applies_cpu_and_file_size_limits_everywhere() -> None:
+    """The macOS carve-out must be narrow: only RLIMIT_AS is skipped."""
+    recorded: dict[int, tuple[int, int]] = {}
+    original = resource_module.setrlimit
+
+    def capture(which: int, limits: tuple[int, int]) -> None:
+        recorded[which] = limits
+
+    resource_module.setrlimit = capture
+    try:
+        _apply_resource_limits(cpu_seconds=120, memory_bytes=1073741824, file_bytes=2097152)
+    finally:
+        resource_module.setrlimit = original
+
+    assert recorded[resource_module.RLIMIT_CPU] == (120, 120)
+    assert recorded[resource_module.RLIMIT_FSIZE] == (2097152, 2097152)
+    assert recorded[resource_module.RLIMIT_NOFILE] == (256, 256)

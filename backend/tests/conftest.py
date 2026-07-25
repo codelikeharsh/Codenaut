@@ -95,6 +95,15 @@ def make_settings(**overrides: object) -> Settings:
         "embedding_service_token": "embedding-service-secret-for-tests-000000",
         "llm_provider": "deterministic",
         "llm_api_key": "llm-api-key-for-tests-only-00000000000",
+        # Quotas are exercised by dedicated tests that opt in explicitly.
+        "question_rate_limit_enabled": False,
+        # Pinned so a developer's local .env cannot leak into the suite. Settings
+        # still reads `.env`/`../.env`, so any field left unpinned here silently
+        # inherits local values and makes tests pass or fail by machine.
+        "google_auth_enabled": False,
+        "google_client_id": "",
+        "google_client_secret": "",
+        "google_oauth_callback_url": None,
     }
     requested_environment = overrides.get("app_env")
     if requested_environment in {AppEnvironment.DEVELOPMENT, "development"}:

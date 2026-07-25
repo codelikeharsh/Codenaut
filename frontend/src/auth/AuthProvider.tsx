@@ -47,9 +47,13 @@ export function AuthProvider({ children }: PropsWithChildren): React.JSX.Element
     }
   }, [accessToken, clearSession]);
 
+  const updateUser = useCallback((nextUser: User): void => {
+    setUser(nextUser);
+  }, []);
+
   const value = useMemo<AuthContextValue>(
-    () => ({ state, user, accessToken, signIn, signOut, refreshSession }),
-    [accessToken, refreshSession, signIn, signOut, state, user],
+    () => ({ state, user, accessToken, signIn, signOut, refreshSession, updateUser }),
+    [accessToken, refreshSession, signIn, signOut, state, updateUser, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

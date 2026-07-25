@@ -66,16 +66,19 @@ services:
     environment:
       LLM_API_KEY: ""
     read_only: true
+    # ONNX runtime writes scratch/arena files under sustained batch load, not just
+    # at startup; 64m was enough for the model to load but fills mid-batch and
+    # kills the process without a Python-level error to log.
     tmpfs:
-      - /tmp:size=64m,mode=1777
+      - /tmp:size=1g,mode=1777
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/health/live', timeout=2)"]
-      interval: 5s
-      timeout: 3s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/health/live', timeout=25)"]
+      interval: 30s
+      timeout: 30s
       retries: 20
       start_period: 5s
 

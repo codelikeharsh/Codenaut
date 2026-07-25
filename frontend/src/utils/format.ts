@@ -1,5 +1,11 @@
+import type { User } from "../api/contracts";
+
 export function shortSha(value: string | null | undefined): string {
   return value ? value.slice(0, 7) : "—";
+}
+
+export function effectiveName(user: User | null | undefined): string {
+  return user?.custom_display_name || user?.display_name || user?.github_login || "Codenaut user";
 }
 
 export function formatDate(value: string | null | undefined): string {

@@ -12,10 +12,10 @@ const repository: Repository = {
   access_mode: "github_installation",
   access_source: "GitHub App",
   github_repository_id: 4,
-  github_owner: "repolume",
+  github_owner: "codenaut",
   github_name: "api",
-  github_full_name: "repolume/api",
-  github_url: "https://github.com/repolume/api",
+  github_full_name: "codenaut/api",
+  github_url: "https://github.com/codenaut/api",
   is_private: true,
   default_branch: "main",
   primary_language: "Python",
@@ -85,7 +85,7 @@ describe("QuestionWorkspacePage", () => {
   it("prevents empty questions and keeps the composer disabled", async () => {
     vi.spyOn(api, "getRepository").mockResolvedValue(repository);
     renderWorkspace();
-    await screen.findByText("repolume/api");
+    await screen.findByText("codenaut/api");
     expect(screen.getByRole("button", { name: /^ask repository$/i })).toBeDisabled();
   });
 
@@ -93,7 +93,7 @@ describe("QuestionWorkspacePage", () => {
     vi.spyOn(api, "getRepository").mockResolvedValue(repository);
     const ask = vi.spyOn(api, "askQuestion").mockResolvedValue(answer);
     renderWorkspace();
-    const composer = await screen.findByLabelText(/question about repolume\/api/i);
+    const composer = await screen.findByLabelText(/question about codenaut\/api/i);
     fireEvent.change(composer, { target: { value: "Where is authorization enforced?" } });
     fireEvent.click(screen.getByRole("button", { name: /^ask repository$/i }));
     await waitFor(() =>
@@ -108,9 +108,7 @@ describe("QuestionWorkspacePage", () => {
       await screen.findByText(/authorization is enforced before indexing/i),
     ).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /arbitrary links/i })).not.toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: /backend\/app\/services\/repositories.py:44/i }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /repositories\.py:44/i }));
     expect(
       await screen.findByLabelText(/source excerpt backend\/app\/services\/repositories.py/i),
     ).toHaveTextContent("async def select_repository");
@@ -120,7 +118,7 @@ describe("QuestionWorkspacePage", () => {
     vi.spyOn(api, "getRepository").mockResolvedValue(repository);
     vi.spyOn(api, "askQuestion").mockRejectedValue(new Error("network"));
     renderWorkspace();
-    const composer = await screen.findByLabelText(/question about repolume\/api/i);
+    const composer = await screen.findByLabelText(/question about codenaut\/api/i);
     fireEvent.change(composer, { target: { value: "Why was stale-event rejection added?" } });
     fireEvent.click(screen.getByRole("button", { name: /^ask repository$/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/temporarily unavailable/i);

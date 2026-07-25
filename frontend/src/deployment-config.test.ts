@@ -5,7 +5,7 @@ describe("production deployment configuration", () => {
   it("binds browser connections and SPA routing to the exact production API", () => {
     const configuration = createVercelConfig(
       "https://codenaut.example/api/v1",
-      "https://api.repolume.example/api/v1",
+      "https://api.codenaut.example/api/v1",
     );
     const csp = configuration.headers[0]?.headers.find(
       (header) => header.key === "Content-Security-Policy",
@@ -16,7 +16,7 @@ describe("production deployment configuration", () => {
     expect(configuration.rewrites).toEqual([
       {
         source: "/api/v1/:path*",
-        destination: "https://api.repolume.example/api/v1/:path*",
+        destination: "https://api.codenaut.example/api/v1/:path*",
       },
       { source: "/(.*)", destination: "/index" },
     ]);
@@ -24,10 +24,10 @@ describe("production deployment configuration", () => {
 
   it.each([
     undefined,
-    "http://api.repolume.example/api/v1",
-    "https://user:password@api.repolume.example/api/v1",
-    "https://api.repolume.example/api/v1?forward=unsafe",
-    "https://api.repolume.example/api/v10",
+    "http://api.codenaut.example/api/v1",
+    "https://user:password@api.codenaut.example/api/v1",
+    "https://api.codenaut.example/api/v1?forward=unsafe",
+    "https://api.codenaut.example/api/v10",
   ])("rejects an unsafe production API base: %s", (value) => {
     expect(() => validateProductionApiBaseUrl(value)).toThrow();
   });

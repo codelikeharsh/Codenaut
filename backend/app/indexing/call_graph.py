@@ -114,6 +114,10 @@ class PythonCallGraphBuilder:
                         site.expression,
                         str(site.start_line),
                         str(site.end_line),
+                        # Column is required: without it, repeated calls to the same
+                        # target on one line share a fingerprint and collide on the
+                        # call-edge primary key, failing the whole index.
+                        str(site.start_column),
                     )
                 ).encode()
             ).hexdigest()
@@ -149,6 +153,13 @@ class PythonCallGraphBuilder:
                     item.call_end_line,
                     str(item.caller_symbol_id),
                     item.call_expression,
+                    # Two calls to the same target on one line (e.g. ``helper(1) +
+                    # helper(2)``) tie on every column above. Python's stable sort
+                    # keeps them in source order, but re-fetching with the same
+                    # ORDER BY in SQL has no such guarantee for tied rows, so the
+                    # recomputed fingerprint can silently disagree with this one
+                    # unless a value unique per edge breaks every tie.
+                    item.call_site_fingerprint,
                 ),
             )
         )

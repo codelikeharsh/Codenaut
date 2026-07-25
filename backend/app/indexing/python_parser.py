@@ -171,6 +171,7 @@ class PythonStaticParser:
                                 expression=expression,
                                 start_line=line,
                                 end_line=node.end_point.row + 1,
+                                start_column=node.start_point.column,
                             )
                         )
                     else:

@@ -21,7 +21,10 @@ from sqlalchemy.exc import ArgumentError
 MINIMUM_SECRET_LENGTH = 32
 OPENAI_API_BASE_URL = "https://api.openai.com/v1"
 GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
-SUPPORTED_LLM_API_BASE_URLS = frozenset({OPENAI_API_BASE_URL, GEMINI_API_BASE_URL})
+GROQ_API_BASE_URL = "https://api.groq.com/openai/v1"
+SUPPORTED_LLM_API_BASE_URLS = frozenset(
+    {OPENAI_API_BASE_URL, GEMINI_API_BASE_URL, GROQ_API_BASE_URL}
+)
 _PLACEHOLDER_MARKERS = (
     "change-me",
     "changeme",
@@ -272,6 +275,10 @@ class Settings(BaseSettings):
     agent_caller_result_limit: int = Field(default=20, ge=1, le=100)
     agent_max_final_output_tokens: int = Field(default=1200, ge=128, le=8192)
 
+    question_rate_limit_enabled: bool = True
+    question_rate_limit_per_minute: int = Field(default=10, ge=1, le=600)
+    question_rate_limit_per_day: int = Field(default=300, ge=1, le=100_000)
+
     cors_origins: list[AnyHttpUrl] = Field(default_factory=list)
     trusted_hosts: list[str] = Field(default_factory=lambda: ["localhost", "127.0.0.1"])
 
@@ -357,11 +364,18 @@ class Settings(BaseSettings):
     @field_validator("github_app_private_key")
     @classmethod
     def validate_private_key(cls, value: SecretStr) -> SecretStr:
-        """Require a PEM-shaped private key without ever returning its content."""
-        raw_value = value.get_secret_value()
+        """Normalize and require a PEM-shaped private key, never returning its content.
+
+        A PEM is multi-line, but dotenv and most secret stores carry single-line
+        values, so the key normally arrives with literal backslash-n escapes.
+        Convert those to real newlines here; signing rejects the escaped form.
+        """
+        raw_value = value.get_secret_value().strip()
+        if "\\n" in raw_value and "\n" not in raw_value:
+            raw_value = raw_value.replace("\\n", "\n")
         if "-----BEGIN" not in raw_value or "PRIVATE KEY-----" not in raw_value:
             raise ValueError("GITHUB_APP_PRIVATE_KEY must be PEM encoded")
-        return value
+        return SecretStr(raw_value)
 
     @field_validator("trusted_hosts")
     @classmethod
@@ -643,6 +657,9 @@ class Settings(BaseSettings):
             "agent_max_tool_calls": self.agent_max_tool_calls,
             "agent_tool_timeout_seconds": self.agent_tool_timeout_seconds,
             "agent_total_timeout_seconds": self.agent_total_timeout_seconds,
+            "question_rate_limit_enabled": self.question_rate_limit_enabled,
+            "question_rate_limit_per_minute": self.question_rate_limit_per_minute,
+            "question_rate_limit_per_day": self.question_rate_limit_per_day,
         }
 
 

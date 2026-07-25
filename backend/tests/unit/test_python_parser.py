@@ -81,9 +81,7 @@ def test_crlf_and_lf_produce_identical_structure_and_hashes() -> None:
 
 
 def test_tree_lifetime_is_retained_while_traversing_large_call_graph() -> None:
-    source = "def example():\n" + "".join(
-        f"    call_{index}()\n" for index in range(400)
-    )
+    source = "def example():\n" + "".join(f"    call_{index}()\n" for index in range(400))
 
     parsed = parser().parse(file_path="large.py", source_text=source, commit_sha=COMMIT)
 
@@ -143,3 +141,22 @@ def test_prompt_injection_shaped_comments_and_executable_code_remain_inert(
 
     assert parsed.parse_status is ParseStatus.COMPLETE
     assert not marker.exists()
+
+
+def test_repeated_calls_to_one_target_on_a_line_are_distinguishable() -> None:
+    """Two calls to the same function on one line must not be identical.
+
+    Regression: without a column, both sites produced the same call-site
+    fingerprint, so the derived call-edge id collided and indexing failed on
+    real code with `pk_call_edges` duplicate-key errors.
+    """
+    source = "def caller():\n    return helper(1) + helper(2)\n"
+
+    parsed = parser().parse(file_path="m.py", source_text=source, commit_sha=COMMIT)
+
+    assert len(parsed.call_sites) == 2
+    first, second = parsed.call_sites
+    assert first.expression == second.expression == "helper"
+    assert first.start_line == second.start_line
+    # The column is what makes them distinct.
+    assert first.start_column != second.start_column

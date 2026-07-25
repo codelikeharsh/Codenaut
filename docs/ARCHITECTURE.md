@@ -1,10 +1,10 @@
-# RepoLume Architecture
+# Codenaut Architecture
 
 **Status:** Milestone 10 adds a React/TypeScript/Vite browser client for the existing authenticated API, safe answer/evidence rendering, and a browser-safe OAuth completion redirect. Static parsing and call-graph construction remain conservative complete-target rebuilds. Live GitHub/hosted-model acceptance and deployment remain outstanding.
 
 ## Goals
 
-RepoLume is a multi-tenant, read-only repository intelligence SaaS. It authenticates users through a GitHub App, indexes only repositories authorized through an active installation, and answers repository-scoped questions using retrieved evidence. The first fully supported language is Python.
+Codenaut is a multi-tenant, read-only repository intelligence SaaS. It authenticates users through a GitHub App, indexes only repositories authorized through an active installation, and answers repository-scoped questions using retrieved evidence. The first fully supported language is Python.
 
 The architecture prioritizes tenant isolation, evidence provenance, recoverable background work, and the rule that connected repository code is data and is never executed.
 
@@ -75,7 +75,7 @@ Private embeddings:
 GitHub login:
   state + PKCE generation -> hashed one-time state in PostgreSQL
   -> GitHub authorization redirect -> server-side code exchange
-  -> GitHub user/installations sync -> RepoLume access + rotating refresh tokens
+  -> GitHub user/installations sync -> Codenaut access + rotating refresh tokens
 
 Protected installation/repository lookup:
   bearer validation -> server-loaded user -> fresh membership + active installation query
@@ -127,19 +127,19 @@ authenticated user
   -> active installation membership
   -> active GitHub App installation
   -> repository still selected for that installation
-  -> RepoLume repository belongs to the installation
+  -> Codenaut repository belongs to the installation
   -> requested session belongs to that repository
 ```
 
 Services derive repository context from authorization-aware joins. Client identifiers are selectors, never proof of access. Membership must be within the configured freshness window, the installation must be active and undeleted, and the repository must be selected and unrevoked. The repository service reauthorizes after GitHub network work before committing synchronized state. Cross-tenant failure does not reveal resource existence.
 
-GitHub user tokens exist only during callback synchronization. Installation tokens exist only during one repository synchronization or worker clone. RepoLume access tokens are short-lived signed bearer tokens. Browser refresh tokens are random opaque values; PostgreSQL stores only a keyed digest, family lineage, expiry/use/revocation state, and user relation. OAuth state and the PKCE verifier are also persisted only as keyed digests.
+GitHub user tokens exist only during callback synchronization. Installation tokens exist only during one repository synchronization or worker clone. Codenaut access tokens are short-lived signed bearer tokens. Browser refresh tokens are random opaque values; PostgreSQL stores only a keyed digest, family lineage, expiry/use/revocation state, and user relation. OAuth state and the PKCE verifier are also persisted only as keyed digests.
 
 The relational model actively supports users, installations/memberships, authorized repositories, content-free webhook delivery state, one-time OAuth state, refresh-token families, indexing jobs/builds, versioned symbols, and validated versioned call edges. Chat relations remain groundwork for later milestones.
 
 ## Database session strategy
 
-RepoLume uses SQLAlchemy 2.x async sessions with `asyncpg` in FastAPI and the worker:
+Codenaut uses SQLAlchemy 2.x async sessions with `asyncpg` in FastAPI and the worker:
 
 - One short-lived session per API request or explicit application-service unit of work, with rollback on failure and disposal during lifespan shutdown.
 - One short-lived session per worker job step/transaction; no session remains open during clone, embedding, LLM, or other network work.

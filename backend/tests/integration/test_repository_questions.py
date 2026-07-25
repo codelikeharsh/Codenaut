@@ -11,11 +11,13 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.sql import Executable
 
 from app.application import create_app
 from app.auth.tokens import TokenService
 from app.db.models.call_edge import CallEdge
+from app.db.models.chat import ChatMessage
 from app.db.models.enums import (
     Confidence,
     GitHubAccountType,
@@ -32,6 +34,7 @@ from app.db.models.github_installation import GitHubInstallation, InstallationMe
 from app.db.models.repository import Repository
 from app.db.models.repository_index_build import RepositoryIndexBuild
 from app.db.models.symbol_definition import SymbolDefinition
+from app.db.models.usage_record import UsageRecord
 from app.db.models.user import User
 from app.db.session import Database
 from app.embeddings.preprocessing import EmbeddingPreprocessor, PreparedEmbedding
@@ -42,6 +45,7 @@ from app.llm.client import (
     GroundedAnswerDraft,
     GroundedGenerationRequest,
 )
+from app.services.rate_limit import RateLimitDecision
 from app.vector.qdrant import RetrievalHit, VectorScope
 from tests.conftest import make_settings
 
@@ -66,6 +70,14 @@ async def reset_database() -> None:
             )
         )
     await engine.dispose()
+
+
+async def _database_scalars_local(statement: Executable) -> list[Any]:
+    engine = create_async_engine(database_url())
+    async with AsyncSession(engine) as session:
+        values = list((await session.scalars(statement)).all())
+    await engine.dispose()
+    return values
 
 
 class FakeGitHub:
@@ -196,6 +208,24 @@ class FakeLLM:
             uncertainty=DraftUncertainty.LOW,
             evidence_ids=self.evidence_ids,
         )
+
+    async def close(self) -> None:
+        return None
+
+
+class CountingRateLimiter:
+    """Deterministic quota double that avoids depending on a live Redis window."""
+
+    def __init__(self, *, allowed: int) -> None:
+        self.allowed = allowed
+        self.calls = 0
+
+    async def check_question(self, user_id: uuid.UUID) -> RateLimitDecision:
+        del user_id
+        self.calls += 1
+        if self.calls > self.allowed:
+            return RateLimitDecision(allowed=False, retry_after_seconds=60, scope="minute")
+        return RateLimitDecision(allowed=True, retry_after_seconds=0, scope="allowed")
 
     async def close(self) -> None:
         return None
@@ -610,6 +640,68 @@ def test_repository_question_is_authorized_scoped_grounded_and_cited() -> None:
     assert len(llm.requests) == 1
     assert denied.status_code == 404
     assert "private-repo" not in denied.text
+
+
+def test_repository_questions_persist_as_ordered_authorized_chat_history() -> None:
+    settings = make_settings()
+    owner_id, other_id, repository_id = asyncio.run(seed_active_repository())
+    database = Database(
+        engine=create_async_engine(database_url(), pool_pre_ping=True),
+        ready_timeout_seconds=2,
+    )
+    app = create_app(
+        settings=settings,
+        database=database,
+        github_client=FakeGitHub(),  # type: ignore[arg-type]
+        vector_store=FakeVectors(),
+        embedding_provider=FakeEmbeddings(),  # type: ignore[arg-type]
+        llm_provider=FakeLLM(),
+    )
+    tokens = TokenService(settings)
+    owner_headers = {"Authorization": f"Bearer {tokens.issue_access_token(owner_id).value}"}
+    other_headers = {"Authorization": f"Bearer {tokens.issue_access_token(other_id).value}"}
+    with TestClient(app) as client:
+        empty_history = client.get(
+            f"/api/v1/repositories/{repository_id}/messages", headers=owner_headers
+        )
+        first = client.post(
+            f"/api/v1/repositories/{repository_id}/questions",
+            headers=owner_headers,
+            json={"question": "How does validate inspect the response?"},
+        )
+        second = client.post(
+            f"/api/v1/repositories/{repository_id}/questions",
+            headers=owner_headers,
+            json={"question": "What does validate return on success?"},
+        )
+        history = client.get(
+            f"/api/v1/repositories/{repository_id}/messages", headers=owner_headers
+        )
+        denied_history = client.get(
+            f"/api/v1/repositories/{repository_id}/messages", headers=other_headers
+        )
+
+    assert empty_history.status_code == 200
+    assert empty_history.json() == []
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert denied_history.status_code == 404
+
+    assert history.status_code == 200
+    exchanges = history.json()
+    assert [item["question"] for item in exchanges] == [
+        "How does validate inspect the response?",
+        "What does validate return on success?",
+    ]
+    for exchange, question_response in zip(exchanges, (first.json(), second.json()), strict=True):
+        response = exchange["response"]
+        assert response["answer"] == question_response["answer"]
+        assert response["answerability"] == question_response["answerability"]
+        assert response["uncertainty"] == question_response["uncertainty"]
+        assert response["citations"] == question_response["citations"]
+        assert response["indexed_commit_sha"] == question_response["indexed_commit_sha"]
+        assert response["active_index_version"] == question_response["active_index_version"]
+        assert response["repository_id"] == str(repository_id)
 
 
 def test_unsupported_question_skips_embedding_retrieval_and_llm() -> None:
@@ -1043,6 +1135,149 @@ def test_repository_question_keeps_using_prior_active_version_during_replacement
     assert response.json()["active_index_version"] == 1
     assert response.json()["indexed_commit_sha"] == "a" * 40
     assert vectors.scopes[0].index_version == 1
+
+
+def test_clearing_chat_history_removes_only_the_callers_own_transcript() -> None:
+    settings = make_settings()
+    owner_id, other_id, repository_id = asyncio.run(seed_active_repository())
+    database = Database(
+        engine=create_async_engine(database_url(), pool_pre_ping=True),
+        ready_timeout_seconds=2,
+    )
+    app = create_app(
+        settings=settings,
+        database=database,
+        github_client=FakeGitHub(),  # type: ignore[arg-type]
+        vector_store=FakeVectors(),
+        embedding_provider=FakeEmbeddings(),  # type: ignore[arg-type]
+        llm_provider=FakeLLM(),
+    )
+    tokens = TokenService(settings)
+    owner_headers = {"Authorization": f"Bearer {tokens.issue_access_token(owner_id).value}"}
+    other_headers = {"Authorization": f"Bearer {tokens.issue_access_token(other_id).value}"}
+    with TestClient(app) as client:
+        client.post(
+            f"/api/v1/repositories/{repository_id}/questions",
+            headers=owner_headers,
+            json={"question": "How does validate inspect the response?"},
+        )
+        before = client.get(f"/api/v1/repositories/{repository_id}/messages", headers=owner_headers)
+        denied = client.delete(
+            f"/api/v1/repositories/{repository_id}/messages", headers=other_headers
+        )
+        still_present = client.get(
+            f"/api/v1/repositories/{repository_id}/messages", headers=owner_headers
+        )
+        cleared = client.delete(
+            f"/api/v1/repositories/{repository_id}/messages", headers=owner_headers
+        )
+        after = client.get(f"/api/v1/repositories/{repository_id}/messages", headers=owner_headers)
+        repeat = client.delete(
+            f"/api/v1/repositories/{repository_id}/messages", headers=owner_headers
+        )
+
+    assert len(before.json()) == 1
+    # An unauthorized user must not be able to clear another tenant's transcript.
+    assert denied.status_code == 404
+    assert len(still_present.json()) == 1
+    assert cleared.status_code == 204
+    assert after.json() == []
+    # Clearing an already-empty transcript stays idempotent.
+    assert repeat.status_code == 204
+
+    remaining = asyncio.run(_database_scalars_local(select(ChatMessage)))
+    assert remaining == []
+
+
+def test_answering_a_question_writes_one_content_free_usage_record() -> None:
+    settings = make_settings()
+    owner_id, _, repository_id = asyncio.run(seed_active_repository())
+    database = Database(
+        engine=create_async_engine(database_url(), pool_pre_ping=True),
+        ready_timeout_seconds=2,
+    )
+    app = create_app(
+        settings=settings,
+        database=database,
+        github_client=FakeGitHub(),  # type: ignore[arg-type]
+        vector_store=FakeVectors(),
+        embedding_provider=FakeEmbeddings(),  # type: ignore[arg-type]
+        llm_provider=FakeLLM(),
+    )
+    question = "How does validate inspect the response?"
+    with TestClient(app) as client:
+        answered = client.post(
+            f"/api/v1/repositories/{repository_id}/questions",
+            headers={
+                "Authorization": (
+                    f"Bearer {TokenService(settings).issue_access_token(owner_id).value}"
+                )
+            },
+            json={"question": question},
+        )
+
+    assert answered.status_code == 200
+    records = asyncio.run(
+        _database_scalars_local(select(UsageRecord).order_by(UsageRecord.created_at))
+    )
+    assert len(records) == 1
+    record = records[0]
+    assert record.operation == "repository_question"
+    assert record.user_id == owner_id
+    assert record.repository_id == repository_id
+    assert record.success is True
+    assert record.latency_ms is not None
+    assert record.latency_ms >= 0
+    # Accounting columns must never carry question text, answers, or evidence.
+    assert not any(
+        question in str(value)
+        for value in (record.operation, record.tool_name, record.estimated_cost)
+    )
+
+
+def test_exceeding_the_question_quota_returns_a_safe_429_without_calling_the_model() -> None:
+    settings = make_settings(question_rate_limit_enabled=True, question_rate_limit_per_minute=2)
+    owner_id, _, repository_id = asyncio.run(seed_active_repository())
+    llm = FakeLLM()
+    database = Database(
+        engine=create_async_engine(database_url(), pool_pre_ping=True),
+        ready_timeout_seconds=2,
+    )
+    app = create_app(
+        settings=settings,
+        database=database,
+        github_client=FakeGitHub(),  # type: ignore[arg-type]
+        vector_store=FakeVectors(),
+        embedding_provider=FakeEmbeddings(),  # type: ignore[arg-type]
+        llm_provider=llm,
+        rate_limiter=CountingRateLimiter(allowed=2),
+    )
+    headers = {
+        "Authorization": f"Bearer {TokenService(settings).issue_access_token(owner_id).value}"
+    }
+    with TestClient(app) as client:
+        first = client.post(
+            f"/api/v1/repositories/{repository_id}/questions",
+            headers=headers,
+            json={"question": "How does validate inspect the response?"},
+        )
+        second = client.post(
+            f"/api/v1/repositories/{repository_id}/questions",
+            headers=headers,
+            json={"question": "How does validate inspect the response?"},
+        )
+        throttled = client.post(
+            f"/api/v1/repositories/{repository_id}/questions",
+            headers=headers,
+            json={"question": "How does validate inspect the response?"},
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert throttled.status_code == 429
+    assert throttled.json()["error"]["code"] == "rate_limit_exceeded"
+    # The throttled request must be rejected before any billable model call.
+    assert len(llm.requests) == 2
 
 
 def test_repository_question_requires_authentication_and_rejects_extra_fields() -> None:

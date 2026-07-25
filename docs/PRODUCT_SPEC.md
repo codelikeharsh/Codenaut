@@ -1,6 +1,6 @@
-# RepoLume — Production SaaS Master Build Prompt
+# Codenaut — Production SaaS Master Build Prompt
 
-You are the principal software architect and engineer responsible for building **RepoLume**, a real, publicly accessible, production-oriented SaaS product.
+You are the principal software architect and engineer responsible for building **Codenaut**, a real, publicly accessible, production-oriented SaaS product.
 
 This is not a college project, tutorial, prototype presented as complete, or résumé-only demo. Build the smallest reliable production version that real users can safely use, then expand it incrementally.
 
@@ -44,7 +44,7 @@ Never claim that a test, build, migration, deployment, or manual verification su
 
 ## Product name
 
-**RepoLume**
+**Codenaut**
 
 ## Product category
 
@@ -52,7 +52,7 @@ A multi-tenant developer SaaS platform for understanding GitHub repositories.
 
 ## Product promise
 
-RepoLume lets developers connect an authorized GitHub repository and ask natural-language questions about:
+Codenaut lets developers connect an authorized GitHub repository and ask natural-language questions about:
 
 * Where code is implemented
 * How a feature works
@@ -78,11 +78,11 @@ Possible evidence includes:
 * Pull requests
 * Repository documentation
 
-RepoLume must never invent repository details merely to produce a complete-sounding answer.
+Codenaut must never invent repository details merely to produce a complete-sounding answer.
 
 ## Initial commercial model
 
-RepoLume is free for users during its initial release.
+Codenaut is free for users during its initial release.
 
 Do not implement:
 
@@ -99,7 +99,7 @@ The system must still track operational usage and enforce reasonable free-produc
 
 # 3. Initial users and use cases
 
-RepoLume should support:
+Codenaut should support:
 
 * Developers joining an unfamiliar codebase
 * Engineers returning to an old project
@@ -186,7 +186,7 @@ Python is the first fully supported language. The architecture must allow additi
 
 A connected repository is untrusted input.
 
-RepoLume must never execute, evaluate, import, build, install, test, or otherwise invoke code from a connected repository.
+Codenaut must never execute, evaluate, import, build, install, test, or otherwise invoke code from a connected repository.
 
 Allowed operations:
 
@@ -505,7 +505,7 @@ Small changes are allowed when justified. Record structural decisions in `docs/D
 
 # 9. Multi-tenant product model
 
-RepoLume is a multi-tenant product.
+Codenaut is a multi-tenant product.
 
 All repository data must be scoped to the authenticated user and the relevant GitHub App installation.
 
@@ -517,7 +517,7 @@ Use these concepts:
 * GitHub account
 * GitHub App installation
 * Installation repository
-* RepoLume repository record
+* Codenaut repository record
 * Chat session
 * Indexing job
 * Usage record
@@ -528,7 +528,7 @@ Authorization must consider:
 2. The GitHub App installation still exists.
 3. The installation still includes the repository.
 4. The user is allowed to act through that installation.
-5. The RepoLume repository record belongs to the authorized installation.
+5. The Codenaut repository record belongs to the authorized installation.
 6. The requested chat session belongs to an authorized repository context.
 
 Never authorize access from a client-supplied `repo_id` alone.
@@ -741,15 +741,15 @@ Use a GitHub App rather than a shared personal access token.
 
 ## Authentication
 
-Use the GitHub user authorization flow associated with the GitHub App for signing users into RepoLume.
+Use the GitHub user authorization flow associated with the GitHub App for signing users into Codenaut.
 
 The backend should:
 
 * Generate and validate OAuth state
 * Exchange the authorization code server-side
 * Retrieve the authenticated GitHub user
-* Create or update the RepoLume user
-* Issue a short-lived RepoLume access token
+* Create or update the Codenaut user
+* Issue a short-lived Codenaut access token
 * Issue a longer-lived refresh token in a secure cookie
 
 ## Repository access
@@ -1201,12 +1201,12 @@ It must not contain:
 
 ---
 
-# 19. Base system prompt for RepoLume
+# 19. Base system prompt for Codenaut
 
 Use the following as the initial runtime system prompt:
 
 ```text
-You are RepoLume, a read-only repository intelligence assistant.
+You are Codenaut, a read-only repository intelligence assistant.
 
 You answer questions about the currently selected GitHub repository using only
 the evidence retrieved through the tools provided to you.
@@ -1233,7 +1233,7 @@ supported part and clearly identify what remains unknown.
 When evidence is conflicting, describe the conflict and identify which source
 represents the current implementation.
 
-When no reliable evidence exists, say that RepoLume could not determine the
+When no reliable evidence exists, say that Codenaut could not determine the
 answer from the available repository evidence. Never guess merely to provide a
 complete answer.
 ```
@@ -1258,7 +1258,7 @@ Safely serialize and escape retrieved content.
 
 # 20. Unknown answers and edge cases
 
-RepoLume’s trustworthiness depends on correctly handling uncertainty.
+Codenaut’s trustworthiness depends on correctly handling uncertainty.
 
 ## No relevant evidence
 
@@ -2114,7 +2114,7 @@ Acceptance:
 Complete:
 
 * GitHub user authentication
-* RepoLume access and refresh tokens
+* Codenaut access and refresh tokens
 * GitHub installation synchronization
 * Installation membership
 * Repository listing

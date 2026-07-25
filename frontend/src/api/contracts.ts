@@ -45,6 +45,13 @@ export interface User {
   avatar_url: string | null;
   email: string | null;
   linked_providers: Array<"google" | "github">;
+  custom_display_name: string | null;
+  avatar_color: string | null;
+}
+
+export interface UpdateProfileRequest {
+  custom_display_name?: string | null;
+  avatar_color?: string | null;
 }
 
 export interface AccessTokenResponse {
@@ -251,4 +258,9 @@ export interface QuestionResponse {
   tool_call_count: number;
   duration_ms: number;
   trace: AgentTraceStep[];
+}
+
+export interface ChatExchange {
+  question: string;
+  response: QuestionResponse;
 }
