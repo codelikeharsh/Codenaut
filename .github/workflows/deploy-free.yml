@@ -160,7 +160,7 @@ jobs:
             --max-instances=1 \
             --concurrency=4 \
             --cpu=2 \
-            --memory=2Gi \
+            --memory=4Gi \
             --timeout=300 \
             --set-env-vars="EMBEDDING_ENVIRONMENT=production,EMBEDDING_LOG_JSON=true,EMBEDDING_MODEL_THREADS=1,EMBEDDING_MAX_CONCURRENT_REQUESTS=1" \
             --set-secrets="EMBEDDING_SERVICE_TOKEN=embedding-service-token:latest" \
